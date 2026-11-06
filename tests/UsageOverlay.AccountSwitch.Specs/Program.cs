@@ -120,8 +120,8 @@ try
     var selectedProject = ProjectGitStatus.ReadSelectedProject(projectStateFile);
     Assert(selectedProject?.Root == repository, "Resolves the selected project's single root");
     var gitStatus = await ProjectGitStatus.ReadAsync(selectedProject!);
-    Assert(gitStatus.IsRepository && gitStatus.Branches >= 1 && gitStatus.LastCommit is not null,
-        "Reads real branch count and last commit from a repository");
+    Assert(gitStatus.IsRepository && gitStatus.Branches is >= 0 && gitStatus.LastCommit is not null,
+        "Reads repository metadata in attached and detached checkouts");
     var futureCommit = gitStatus with { LastCommit = DateTimeOffset.Now.AddHours(1) };
     Assert(ProjectGitStatus.Format(futureCommit, DateTimeOffset.Now).Contains("в будущем", StringComparison.Ordinal),
         "Does not describe a future commit as recent");

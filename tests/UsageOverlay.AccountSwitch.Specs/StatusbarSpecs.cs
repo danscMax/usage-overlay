@@ -104,6 +104,17 @@ internal static class StatusbarSpecs
             await Git(conflict, "commit", "-am", "Main edit");
             await Git(conflict, "merge", "other");
             Check((await ProjectGitStatus.ReadAsync(project with { Root = conflict })).Conflicts == 1, "Reads an actual unresolved merge conflict");
+
+            var detached = Path.Combine(directory, "detached");
+            await Git(directory, "init", "--initial-branch=main", detached);
+            File.WriteAllText(Path.Combine(detached, "seed.txt"), "snapshot");
+            await Git(detached, "add", ".");
+            await Git(detached, "commit", "-m", "Snapshot");
+            await Git(detached, "checkout", "--detach");
+            await Git(detached, "branch", "-D", "main");
+            snapshot = await ProjectGitStatus.ReadAsync(project with { Root = detached });
+            Check(snapshot.IsRepository && snapshot.Branches == 0 && snapshot.LastCommit is not null,
+                "A detached tag checkout with no local branches still has valid Git metadata");
         }
         finally
         {
