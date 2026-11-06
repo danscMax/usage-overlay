@@ -30,6 +30,10 @@ internal static class SettingsPersistenceSpecs
             Check(File.Exists(desktopLegacy) && File.Exists(packagedLegacy), "Migration retains original settings files");
             var clean = new OverlaySettingsStore(logger, Path.Combine(root, "clean", "settings.json"), []);
             Check(!clean.Load().ClaudeAutomaticRenewalEnabled, "New installations do not silently opt in");
+            var blocked = Path.Combine(root, "not-a-directory");
+            File.WriteAllText(blocked, "unchanged");
+            Check(!new OverlaySettingsStore(logger, Path.Combine(blocked, "settings.json"), []).Save(migrated), "Failed settings writes report failure instead of false success");
+            Check(File.ReadAllText(blocked) == "unchanged", "Failed settings writes preserve existing data");
             var old = new OverlaySettingsStore(logger, Path.Combine(root, "old", "settings.json"), [packagedLegacy]);
             Check(!old.Load().ClaudeAutomaticRenewalEnabled, "Migration preserves explicit legacy opt-out");
             File.WriteAllText(canonical, "invalid json");
@@ -37,6 +41,9 @@ internal static class SettingsPersistenceSpecs
             Check(!Directory.EnumerateFiles(root, "*.tmp", SearchOption.AllDirectories).Any(), "No migration or save temporary files remain");
             Check(AppPaths.SettingsPath == Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".usage-overlay", "settings.json"),
                 "Canonical settings path is outside virtualized AppData");
+            Check(StartupShortcutManager.IsSupportedExecutable(@"C:\Apps\UsageOverlay.languages.exe", "UsageOverlay")
+                && !StartupShortcutManager.IsSupportedExecutable(@"C:\Apps\dotnet.exe", "UsageOverlay")
+                && !StartupShortcutManager.IsSupportedExecutable(@"C:\Apps\test.exe", "Tests"), "Renamed packaged app supports startup; generic hosts and test executables do not");
         }
         finally
         {

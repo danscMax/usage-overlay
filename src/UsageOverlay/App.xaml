@@ -3,6 +3,47 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:sys="clr-namespace:System;assembly=System.Runtime">
     <Application.Resources>
+        <Style x:Key="SettingsScrollThumbStyle" TargetType="Thumb">
+            <Setter Property="Background" Value="{DynamicResource OverlayMutedBrush}" />
+            <Setter Property="Opacity" Value="0.55" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Border Margin="2,1" Background="{TemplateBinding Background}" CornerRadius="3" />
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter Property="Opacity" Value="0.8" /></Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter Property="Background" Value="{DynamicResource OverlayNormalBrush}" />
+                                <Setter Property="Opacity" Value="1" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="SettingsScrollPageButtonStyle" TargetType="RepeatButton">
+            <Setter Property="Focusable" Value="False" />
+            <Setter Property="IsTabStop" Value="False" />
+            <Setter Property="Opacity" Value="0" />
+            <Setter Property="Template"><Setter.Value><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></Setter.Value></Setter>
+        </Style>
+        <Style x:Key="SettingsVerticalScrollBarStyle" TargetType="ScrollBar">
+            <Setter Property="Width" Value="10" />
+            <Setter Property="Background" Value="{DynamicResource SettingsWindowBackgroundBrush}" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Border Background="{TemplateBinding Background}">
+                            <Track x:Name="PART_Track" IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton><RepeatButton Command="ScrollBar.PageUpCommand" Style="{StaticResource SettingsScrollPageButtonStyle}" /></Track.DecreaseRepeatButton>
+                                <Track.Thumb><Thumb MinHeight="36" Style="{StaticResource SettingsScrollThumbStyle}" /></Track.Thumb>
+                                <Track.IncreaseRepeatButton><RepeatButton Command="ScrollBar.PageDownCommand" Style="{StaticResource SettingsScrollPageButtonStyle}" /></Track.IncreaseRepeatButton>
+                            </Track>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Color x:Key="OverlaySurfaceColor">#FF242424</Color>
         <Color x:Key="OverlaySurfaceRaisedColor">#FF2A2A2A</Color>
         <Color x:Key="OverlayBorderColor">#FF3B3B3B</Color>
@@ -12,6 +53,7 @@
         <Color x:Key="OverlayNormalColor">#FF55C878</Color>
         <Color x:Key="OverlayWarningColor">#FFF0B45E</Color>
         <Color x:Key="OverlayCriticalColor">#FFE55A5A</Color>
+        <Color x:Key="OverlayTightColor">#FFFB923C</Color>
         <Color x:Key="OverlayMenuHoverColor">#FF333333</Color>
         <Color x:Key="OverlayMenuCriticalHoverColor">#FF3B2929</Color>
         <Color x:Key="SettingsPrimaryTextColor">#FF102419</Color>

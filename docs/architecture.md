@@ -1,5 +1,9 @@
 # Architecture
 
+## Fork additions (0.5.x)
+
+`MainWindow.Statusbar.cs` builds the compact context/quota bar and stable detail rows; `BarPlacement` keeps the rail anchored while placing details on an available side. `NativeWindowStyle` applies native bounds atomically. `SessionTelemetry` combines read-only local Codex IPC/database/rollout sources; `ProjectGitStatus`, `ProjectResources` and `EnvironmentDiagnostics` supply workspace indicators and existing-cache diagnostics. Unknown readings stay nullable. `Localization` applies English/Russian resources. Quota providers retain the original integration/credential boundaries described below. Manual release checks target the danscMax fork, not upstream.
+
 ## Overview
 
 Usage Overlay is a Windows-only companion process. It does not modify the Codex, Claude or Cursor apps or render inside them.

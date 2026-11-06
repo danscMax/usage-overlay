@@ -25,12 +25,12 @@ public sealed class StartupShortcutManager
             .ToArray();
     }
 
-    public bool IsSupported =>
-        !string.IsNullOrWhiteSpace(_executablePath) &&
-        string.Equals(
-            System.IO.Path.GetFileName(_executablePath),
-            "UsageOverlay.exe",
-            StringComparison.OrdinalIgnoreCase);
+    public bool IsSupported => IsSupportedExecutable(_executablePath, System.Reflection.Assembly.GetEntryAssembly()?.GetName().Name);
+
+    internal static bool IsSupportedExecutable(string path, string? assemblyName) =>
+        string.Equals(assemblyName, "UsageOverlay", StringComparison.Ordinal) &&
+        string.Equals(System.IO.Path.GetExtension(path), ".exe", StringComparison.OrdinalIgnoreCase) &&
+        !string.Equals(System.IO.Path.GetFileName(path), "dotnet.exe", StringComparison.OrdinalIgnoreCase);
 
     public bool IsEnabled => File.Exists(_shortcutPath) || _legacyShortcutPaths.Any(File.Exists);
 

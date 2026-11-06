@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.5.0] - 2026-11-06
+
+### Added in the danscMax fork
+
+- Compact horizontal/vertical bars, context used/free, adaptive sizing, detail placement and tiny layout switch.
+- Git/workspace counters, Codex session/process indicators, existing-cache diagnostics, quota/time colours and statusline icons.
+- Russian/English UI and native layout/hover checks in both themes.
+- Fork release notes, component notices and draft release packaging.
+
+### Fixed
+
+- Close hover-open details by clicking disclosure without immediate reopening; keep Settings on the main bar.
+- Stabilize popup resizing and row reuse, improve vertical space use, align placement settings and surface preference-write failures.
+- Validate physical pointer position before hover collapse, including fractional screen scaling and a running close animation. Size the vertical dock to its content; omit the duplicate free percentage and middle-dot separators.
+- Retain and revalidate the Codex host while the overlay itself takes focus; clicking disclosure no longer causes the active-app visibility tracker to hide, show and reopen it.
+
+### Changed
+
+- Move original credit to Acknowledgements; retain the original MIT license unchanged.
+- Check updates against `danscMax/usage-overlay`, handling no published release normally. Publisher metadata is `danscMax`.
+
 ## [0.4.4] - 2026-10-31
 
 ### Fixed

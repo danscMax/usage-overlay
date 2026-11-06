@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 
 namespace UsageOverlay.Services;
 
@@ -38,6 +39,35 @@ internal static class ProcessAncestry
         }
 
         return ancestors;
+    }
+
+    internal static int? CountCodexDescendants()
+    {
+        var processes = ReadProcesses();
+        foreach (var (id, entry) in processes.Where(pair => string.Equals(pair.Value.Name, "ChatGPT.exe", StringComparison.OrdinalIgnoreCase)))
+        {
+            if (processes.TryGetValue(entry.Parent, out var parent) && string.Equals(parent.Name, entry.Name, StringComparison.OrdinalIgnoreCase)) continue;
+            try
+            {
+                using var process = Process.GetProcessById(id);
+                var path = process.MainModule?.FileName;
+                if (path?.Contains("OpenAI.Codex_", StringComparison.OrdinalIgnoreCase) == true)
+                    return CountDescendants(processes, id);
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or ArgumentException or System.ComponentModel.Win32Exception) { }
+        }
+        return null;
+    }
+
+    internal static int CountDescendants(IReadOnlyDictionary<int, (int Parent, string Name)> processes, int root)
+    {
+        var seen = new HashSet<int> { root };
+        var queue = new Queue<int>();
+        queue.Enqueue(root);
+        while (queue.TryDequeue(out var parent))
+            foreach (var (id, entry) in processes)
+                if (entry.Parent == parent && seen.Add(id)) queue.Enqueue(id);
+        return seen.Count - 1;
     }
 
     private static Dictionary<int, (int Parent, string Name)> ReadProcesses()

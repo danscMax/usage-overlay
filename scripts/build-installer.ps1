@@ -19,6 +19,8 @@ $requiredPackageFiles = @(
     'UsageOverlay.exe',
     'README.md',
     'LICENSE',
+    'THIRD-PARTY-NOTICES.md',
+    'licenses\CodexStatusbar.txt',
     'CHANGELOG.md',
     'SECURITY.md',
     'VERSION',
@@ -53,6 +55,7 @@ if (-not $compiler) {
     "/DPackageDirectory=$packageDirectory" `
     "/DOutputDirectory=$outputDirectory" `
     $installerDefinition
+if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed with exit code $LASTEXITCODE" }
 
 $installerPath = Join-Path $outputDirectory "usage-overlay-v$Version-win-x64-setup.exe"
 if (-not (Test-Path -LiteralPath $installerPath)) {

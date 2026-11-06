@@ -9,6 +9,7 @@ using System.Windows.Navigation;
 using CodexUsage.Core.Settings;
 using UsageOverlay.Infrastructure;
 using UsageOverlay.Services;
+using Localization = UsageOverlay.Infrastructure.Localization;
 
 namespace UsageOverlay;
 
@@ -39,6 +40,8 @@ public partial class SettingsWindow : Window
         Action openLogs)
     {
         InitializeComponent();
+        SettingsSections.Children.Remove(PositionSection);
+        SettingsSections.Children.Insert(0, PositionSection);
         _settings = settings.Normalize();
         _startAutomatically = startAutomatically;
         _startupSupported = startupSupported;
@@ -52,14 +55,22 @@ public partial class SettingsWindow : Window
         CodexAppStatusText.Text = providerStatus.Codex;
         ClaudeStatusText.Text = providerStatus.Claude;
         CursorStatusText.Text = providerStatus.Cursor;
+        ForkVersionText.Text = Localization.Format("Version {0} · danscMax fork", AppVersion.Current);
         ClaudeSettingsPathText.Text =
-            $"Updates Claude Code’s status line in {providerStatus.ClaudeSettingsPath} after each reply. An existing status line keeps working, and turning this off restores it.";
+            Localization.Format("Updates Claude Code’s status line in {0} after each reply. An existing status line keeps working, and turning this off restores it.", providerStatus.ClaudeSettingsPath);
         LoadControls();
+        Localization.Apply(this);
     }
 
     private void LoadControls()
     {
         StartAutomaticallyCheckBox.IsChecked = _startAutomatically;
+        VerticalRailRadio.IsChecked = _settings.Orientation == RailOrientation.Vertical;
+        HorizontalRailRadio.IsChecked = _settings.Orientation == RailOrientation.Horizontal;
+        DetailsAboveRadio.IsChecked = _settings.DetailsPosition == DetailsPlacement.Above;
+        DetailsBelowRadio.IsChecked = _settings.DetailsPosition == DetailsPlacement.Below;
+        EnglishLanguageRadio.IsChecked = _settings.Language == AppLanguage.English;
+        RussianLanguageRadio.IsChecked = _settings.Language == AppLanguage.Russian;
         StartAutomaticallyCheckBox.IsEnabled = _startupSupported;
         CodexEnabledCheckBox.IsChecked = _settings.CodexEnabled;
         ClaudeEnabledCheckBox.IsChecked = _settings.ClaudeEnabled;
@@ -95,6 +106,34 @@ public partial class SettingsWindow : Window
         RefreshIntervalTextBox.Text = _settings.RefreshIntervalSeconds.ToString(CultureInfo.InvariantCulture);
         UpdatePauseControls();
         UpdatePositionOffsetText();
+        UpdateLayoutControls();
+    }
+
+    internal void UpdatePosition(OverlaySettings settings)
+    {
+        _settings = _settings with { CustomXRatio = settings.CustomXRatio, CustomYRatio = settings.CustomYRatio, Placement = settings.Placement };
+        _pendingHorizontalOffset = settings.HorizontalOffset;
+        _pendingVerticalOffset = settings.VerticalOffset;
+        CustomPositionRadio.IsChecked = settings.Placement == HorizontalPlacement.Custom;
+        UpdatePositionOffsetText();
+    }
+
+    internal void UpdateOrientation(OverlaySettings settings)
+    {
+        _settings = _settings with { Orientation = settings.Orientation };
+        HorizontalRailRadio.IsChecked = settings.Orientation == RailOrientation.Horizontal;
+        VerticalRailRadio.IsChecked = settings.Orientation == RailOrientation.Vertical;
+        UpdateLayoutControls();
+    }
+
+    private void LayoutChoice_OnClick(object sender, RoutedEventArgs e) => UpdateLayoutControls();
+
+    private void UpdateLayoutControls()
+    {
+        var horizontal = HorizontalRailRadio.IsChecked == true;
+        DetailsAboveRadio.IsEnabled = DetailsBelowRadio.IsEnabled = horizontal;
+        LayoutHintText.Text = Localization.Text(horizontal ? "Details prefer the selected side and flip when there is not enough room. Bar size follows its content."
+            : "Vertical dock: details open on the side with more room. Bar size follows its content.");
     }
 
     private void ThemeRadio_OnClick(object sender, RoutedEventArgs eventArgs)
@@ -123,10 +162,13 @@ public partial class SettingsWindow : Window
     private void Window_OnSourceInitialized(object? sender, EventArgs eventArgs)
     {
         // Keep the Save bar on screen on small or highly scaled displays.
-        var available = Math.Max(400, SystemParameters.WorkArea.Height - 24);
+        var available = Math.Max(300, SystemParameters.WorkArea.Height - 24);
         MaxHeight = available;
         MinHeight = Math.Min(MinHeight, available);
         Height = Math.Min(Height, available);
+        MaxWidth = Math.Max(320, SystemParameters.WorkArea.Width - 24);
+        MinWidth = Math.Min(MinWidth, MaxWidth);
+        Width = Math.Min(Width, MaxWidth);
         NativeWindowStyle.ApplyTitleBarTheme(this, ThemeManager.Instance.IsEffectiveDark);
     }
 
@@ -187,7 +229,7 @@ public partial class SettingsWindow : Window
             ClaudeStatusLineCheckBox.IsChecked != true &&
             ClaudeAccountUsageCheckBox.IsChecked != true)
         {
-            ValidationText.Text = "Choose at least one way to read Claude usage.";
+            ValidationText.Text = Localization.Text("Choose at least one way to read Claude usage.");
             ClaudeStatusLineCheckBox.Focus();
             return;
         }
@@ -195,7 +237,7 @@ public partial class SettingsWindow : Window
         if (cursorEnabled && !cursorAccountUsage &&
             (cursorEmail.Length == 0 || !cursorEmail.Contains('@', StringComparison.Ordinal)))
         {
-            ValidationText.Text = "Enter the email address of your Cursor account.";
+            ValidationText.Text = Localization.Text("Enter the email address of your Cursor account.");
             CursorEmailTextBox.Focus();
             return;
         }
@@ -203,14 +245,14 @@ public partial class SettingsWindow : Window
         if (!TryReadDouble(WarningThresholdTextBox.Text, out var warningThreshold) ||
             !TryReadDouble(CriticalThresholdTextBox.Text, out var criticalThreshold))
         {
-            ValidationText.Text = "Enter numbers for both colour thresholds.";
+            ValidationText.Text = Localization.Text("Enter numbers for both colour thresholds.");
             WarningThresholdTextBox.Focus();
             return;
         }
 
         if (warningThreshold < 0 || criticalThreshold > 100 || warningThreshold >= criticalThreshold)
         {
-            ValidationText.Text = "Set amber below red. Both values must be between 0 and 100.";
+            ValidationText.Text = Localization.Text("Set amber below red. Both values must be between 0 and 100.");
             WarningThresholdTextBox.Focus();
             return;
         }
@@ -218,7 +260,7 @@ public partial class SettingsWindow : Window
         if (!int.TryParse(RefreshIntervalTextBox.Text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var interval) ||
             interval is < 15 or > 3_600)
         {
-            ValidationText.Text = "Choose a refresh time between 15 and 3600 seconds.";
+            ValidationText.Text = Localization.Text("Choose a refresh time between 15 and 3600 seconds.");
             SetConnectionSettingsExpanded(true);
             RefreshIntervalTextBox.Focus();
             return;
@@ -227,7 +269,7 @@ public partial class SettingsWindow : Window
         var cliPath = CodexCliPathTextBox.Text.Trim();
         if (cliPath.Length > 0 && !File.Exists(cliPath))
         {
-            ValidationText.Text = "We couldn’t find the Codex CLI at that path.";
+            ValidationText.Text = Localization.Text("We couldn’t find the Codex CLI at that path.");
             SetConnectionSettingsExpanded(true);
             CodexCliPathTextBox.Focus();
             return;
@@ -251,6 +293,7 @@ public partial class SettingsWindow : Window
         var updated = (_settings with
         {
             Theme = theme,
+            Language = RussianLanguageRadio.IsChecked == true ? AppLanguage.Russian : AppLanguage.English,
             Placement = placement,
             HorizontalOffset = _pendingHorizontalOffset,
             VerticalOffset = _pendingVerticalOffset,
@@ -274,13 +317,16 @@ public partial class SettingsWindow : Window
             NotificationsEnabled = NotificationsCheckBox.IsChecked == true,
             UsageReportingEnabled = UsageReportingCheckBox.IsChecked == true,
             CodexCliPath = cliPath,
+            Orientation = HorizontalRailRadio.IsChecked == true ? RailOrientation.Horizontal : RailOrientation.Vertical,
+            DetailsPosition = DetailsBelowRadio.IsChecked == true ? DetailsPlacement.Below : DetailsPlacement.Above,
             RefreshIntervalSeconds = interval,
             PausedUntil = _pendingPausedUntil
         }).Normalize();
 
         var requiresRestart =
             !string.Equals(updated.CodexCliPath, _settings.CodexCliPath, StringComparison.OrdinalIgnoreCase) ||
-            updated.RefreshIntervalSeconds != _settings.RefreshIntervalSeconds;
+            updated.RefreshIntervalSeconds != _settings.RefreshIntervalSeconds ||
+            updated.Language != Localization.Language;
         _startAutomatically = StartAutomaticallyCheckBox.IsChecked == true;
         var newCursorKey = CursorKeyPasswordBox.Password.Trim();
         var request = new SettingsSaveRequest(
@@ -290,11 +336,17 @@ public partial class SettingsWindow : Window
             _removeCursorKeyPending && newCursorKey.Length == 0);
 
         _isSaving = true;
-        SavedStatusText.Text = "Saving…";
+        SavedStatusText.Text = Localization.Text("Saving…");
         string providerMessage;
         try
         {
             providerMessage = await _saveSettings(request);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            SavedStatusText.Text = string.Empty;
+            ValidationText.Text = Localization.Format("Could not apply settings: {0}", exception.Message);
+            return;
         }
         finally
         {
@@ -312,8 +364,8 @@ public partial class SettingsWindow : Window
         CursorKeyPasswordBox.Clear();
         UpdateCursorControls();
         var savedText = requiresRestart
-            ? "Saved. Restart Usage Overlay to use the new CLI path or refresh time."
-            : $"Saved at {DateTime.Now:t}.";
+            ? Localization.Text("Saved. Restart Usage Overlay to apply changes.")
+            : Localization.Format("Saved at {0}.", DateTime.Now.ToString("t", CultureInfo.CurrentCulture));
         SavedStatusText.Text = providerMessage.Length > 0 ? $"{savedText} {providerMessage}" : savedText;
     }
 
@@ -341,10 +393,10 @@ public partial class SettingsWindow : Window
             : Visibility.Visible;
         RemoveCursorKeyButton.IsEnabled = _hasCursorKey && !_removeCursorKeyPending;
         CursorKeyStatusText.Text = _removeCursorKeyPending
-            ? "The saved key will be removed when you save."
+            ? Localization.Text("The saved key will be removed when you save.")
             : _hasCursorKey
-                ? "A key is saved, encrypted for your Windows account. Paste a new one to replace it."
-                : "A Cursor team admin can create one in the Cursor team dashboard. It’s stored encrypted for your Windows account.";
+                ? Localization.Text("A key is saved, encrypted for your Windows account. Paste a new one to replace it.")
+                : Localization.Text("A Cursor team admin can create one in the Cursor team dashboard. It’s stored encrypted for your Windows account.");
     }
 
     private void CancelButton_OnClick(object sender, RoutedEventArgs eventArgs)
@@ -401,7 +453,7 @@ public partial class SettingsWindow : Window
         _pendingHorizontalOffset = 0;
         _pendingVerticalOffset = 0;
         ValidationText.Text = string.Empty;
-        SavedStatusText.Text = "Defaults are ready. Select Save to use them.";
+        SavedStatusText.Text = Localization.Text("Defaults are ready. Select Save to use them.");
         LoadControls();
         ThemeManager.Instance.ApplyTheme(_settings.Theme);
         NativeWindowStyle.ApplyTitleBarTheme(this, ThemeManager.Instance.IsEffectiveDark);
@@ -417,13 +469,13 @@ public partial class SettingsWindow : Window
     private void SetConnectionSettingsExpanded(bool expanded)
     {
         ConnectionSettingsPanel.Visibility = expanded ? Visibility.Visible : Visibility.Collapsed;
-        ConnectionToggleButton.Content = expanded ? "Hide details" : "Show details";
+        ConnectionToggleButton.Content = Localization.Text(expanded ? "Hide details" : "Show details");
         AutomationProperties.SetName(
             ConnectionToggleButton,
-            expanded ? "Hide connection and diagnostics" : "Show connection and diagnostics");
+            Localization.Text(expanded ? "Hide connection and diagnostics" : "Show connection and diagnostics"));
     }
 
-    private void HarooneLink_OnRequestNavigate(object sender, RequestNavigateEventArgs eventArgs)
+    private void ProjectLink_OnRequestNavigate(object sender, RequestNavigateEventArgs eventArgs)
     {
         try
         {
@@ -431,7 +483,7 @@ public partial class SettingsWindow : Window
         }
         catch (Exception exception) when (exception is Win32Exception or InvalidOperationException)
         {
-            ValidationText.Text = "We couldn’t open Haroone.com in your browser.";
+            ValidationText.Text = Localization.Text("The project link could not be opened in your browser.");
         }
 
         eventArgs.Handled = true;
@@ -460,27 +512,26 @@ public partial class SettingsWindow : Window
     {
         if (IsPaused())
         {
-            PauseButton.Content = "Resume now";
-            PauseStatusText.Text = $"Paused until {_pendingPausedUntil!.Value.LocalDateTime:t}";
+            PauseButton.Content = Localization.Text("Resume now");
+            PauseStatusText.Text = Localization.Format("Paused until {0}", _pendingPausedUntil!.Value.LocalDateTime.ToString("t", CultureInfo.CurrentCulture));
         }
         else
         {
-            PauseButton.Content = "Pause 15 min";
-            PauseStatusText.Text = "Usage Overlay is running.";
+            PauseButton.Content = Localization.Text("Pause 15 min");
+            PauseStatusText.Text = Localization.Text("Usage Overlay is running.");
         }
     }
 
     private void UpdatePositionOffsetText()
     {
-        PositionOffsetText.Text =
-            $"Position offset: X {_pendingHorizontalOffset:+0;-0;0}px, " +
-            $"Y {_pendingVerticalOffset:+0;-0;0}px";
+        PositionOffsetText.Text = Localization.Format("Position offset: X {0}px, Y {1}px",
+            _pendingHorizontalOffset.ToString("+0;-0;0", CultureInfo.CurrentCulture), _pendingVerticalOffset.ToString("+0;-0;0", CultureInfo.CurrentCulture));
     }
 
     private static bool TryReadDouble(string value, out double result)
     {
-        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result) ||
-               double.TryParse(value, NumberStyles.Float, CultureInfo.CurrentCulture, out result);
+        return (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out result) ||
+               double.TryParse(value, NumberStyles.Float, CultureInfo.CurrentCulture, out result)) && double.IsFinite(result);
     }
 }
 

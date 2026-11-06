@@ -74,15 +74,17 @@ public sealed class OverlaySettingsStore
         }
     }
 
-    public void Save(OverlaySettings settings)
+    public bool Save(OverlaySettings settings)
     {
         try
         {
             Write(settings, overwrite: true);
+            return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {
             _logger.Error($"Could not save display settings: {exception.Message}");
+            return false;
         }
     }
 

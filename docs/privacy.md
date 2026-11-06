@@ -12,7 +12,9 @@ For Codex, the overlay requests account rate-limit metadata:
 - Limit identifier and optional display name
 - Plan type when returned by the service
 
-It does not request or inspect prompts, responses, files, repository content, browser activity, or conversation history.
+The fork additionally reads local Codex active-thread IPC, state/queue SQLite databases (read-only) and incremental session rollouts to derive context, tokens, cache, timing, action and child-agent indicators. Rollouts can contain conversation/tool text; this reader processes those local records without uploading them. It also reads selected-project metadata, Git state, free disk space, a bounded Cargo-cache size and existing fresh `claude-statusline-mcp-*` / `claude-statusline-infra-*` temporary caches. It does not start new infrastructure probes. Missing/stale sources remain explicitly unavailable.
+
+Git ahead/behind uses existing remote-tracking refs without fetching. Optional pull-request/review indicators use the already signed-in `gh` CLI to contact GitHub for the selected repository and cache results. OS child-process counts are separate from session child agents. Session files and project paths may be sensitive; review diagnostics before sharing them.
 
 For Claude (off by default), Claude Code passes a JSON description of the session to its status-line command. Usage Overlay's relay keeps only the 5-hour and weekly used percentages and reset times, the session ID, and the IDs of the Claude Code process and its parent processes. It discards everything else, including the working directory, model, cost and transcript path, without storing or logging it. Turning Claude on edits the `statusLine` entry of Claude Code's `settings.json`. A restore point is kept, and turning Claude off restores the previous entry.
 
@@ -46,11 +48,11 @@ Authentication is owned by Codex CLI and Codex services. The overlay asks the su
 
 ## Network access
 
-The overlay does not open a network listener. The Codex App Server process uses the account's existing Codex connection to retrieve usage metadata. Claude support makes no network requests; Claude Code supplies the limits locally.
+The overlay does not open a network listener. Codex App Server uses the existing account connection to retrieve usage metadata. Claude's statusline source is local; separately enabled saved-sign-in/renewal sources make the HTTPS requests described above. Optional PR/review indicators invoke GitHub CLI using its existing account.
 
 With Cursor on, Usage Overlay sends `POST https://api.cursor.com/teams/spend` at most every 15 minutes, or once a minute when you choose Refresh usage. The request carries the Admin API key as Basic authentication, the email as a search term, and the Usage Overlay version in the user-agent.
 
-When the user explicitly selects **Check for updates**, Usage Overlay makes one HTTPS request to the public GitHub Releases API for `haroonsulahri/usage-overlay`. The request contains the standard HTTP metadata required by GitHub and the installed Usage Overlay version in the user-agent. No settings, usage percentages, account data, logs, or identifiers are sent by Usage Overlay. It does not check for updates automatically.
+When the user explicitly selects **Check for updates**, this fork requests the public GitHub Releases API for `danscMax/usage-overlay`. It sends standard HTTP metadata and the installed version in the user-agent, without settings, quota/account data, logs or installation identifiers. No automatic checking, downloading or replacement occurs. Only HTTPS release links belonging to this fork are accepted; an unpublished first release is a normal empty state.
 
 ## Telemetry
 

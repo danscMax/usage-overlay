@@ -54,9 +54,9 @@ try
     {
         throw new InvalidOperationException("The GitHub release check returned invalid metadata.");
     }
-    Console.WriteLine(
+    Console.WriteLine(release.HasPublishedRelease ?
         $"PASS  GitHub release check returned v{release.LatestVersion}; " +
-        $"current build is v{release.CurrentVersion}.");
+        $"current build is v{release.CurrentVersion}." : "PASS  Fork update endpoint has no published stable release yet.");
 }
 catch (OperationCanceledException)
 {

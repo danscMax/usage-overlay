@@ -19,10 +19,13 @@ public static class HostWindowLocator
     public static bool TryGetActiveHost(
         Func<UsageProviderKind, bool> isEnabled,
         Func<uint, bool> isClaudeCodeHost,
-        out ActiveHost host)
+        out ActiveHost host,
+        IntPtr previousHostWindow = default)
     {
         host = default;
         var window = GetAncestor(GetForegroundWindow(), GetAncestorRoot);
+        _ = GetWindowThreadProcessId(window, out var foregroundOwner);
+        window = SelectHostWindow(window, foregroundOwner, previousHostWindow);
 
         if (window == IntPtr.Zero || !IsWindowVisible(window) || IsIconic(window) ||
             !TryClassify(window, isEnabled, isClaudeCodeHost, out var provider))
@@ -43,17 +46,31 @@ public static class HostWindowLocator
         var isFullscreen = IsFullscreen(window, rectangle);
         var dpi = GetDpiForWindow(window);
         var scale = dpi > 0 ? dpi / 96d : 1d;
+        var visible = rectangle;
+        var monitorInfo = new MonitorInformation { Size = Marshal.SizeOf<MonitorInformation>() };
+        var monitor = MonitorFromWindow(window, MonitorDefaultToNearest);
+        if (monitor != IntPtr.Zero && GetMonitorInfo(monitor, ref monitorInfo))
+        {
+            visible.Left = Math.Max(visible.Left, monitorInfo.WorkArea.Left);
+            visible.Top = Math.Max(visible.Top, monitorInfo.WorkArea.Top);
+            visible.Right = Math.Min(visible.Right, monitorInfo.WorkArea.Right);
+            visible.Bottom = Math.Min(visible.Bottom, monitorInfo.WorkArea.Bottom);
+        }
+        if (visible.Right <= visible.Left || visible.Bottom <= visible.Top) return false;
         host = new ActiveHost(
             provider,
             new WindowBounds(
-                rectangle.Left / scale,
-                rectangle.Top / scale,
-                rectangle.Right / scale,
-                rectangle.Bottom / scale,
+                visible.Left / scale,
+                visible.Top / scale,
+                visible.Right / scale,
+                visible.Bottom / scale,
                 isFullscreen),
-            TryDetectLightTheme(rectangle));
+            TryDetectLightTheme(rectangle)) { WindowHandle = window };
         return true;
     }
+
+    internal static IntPtr SelectHostWindow(IntPtr foreground, uint owner, IntPtr previousHost) =>
+        foreground == IntPtr.Zero || owner == (uint)Environment.ProcessId ? previousHost : foreground;
 
     private static bool? TryDetectLightTheme(NativeRectangle rectangle)
     {
@@ -260,7 +277,10 @@ public static class HostWindowLocator
 public readonly record struct ActiveHost(
     UsageProviderKind Provider,
     WindowBounds Bounds,
-    bool? IsLightTheme);
+    bool? IsLightTheme)
+{
+    public IntPtr WindowHandle { get; init; }
+}
 
 public readonly record struct WindowBounds(
     double Left,

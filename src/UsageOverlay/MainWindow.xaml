@@ -21,6 +21,55 @@
         Closed="Window_OnClosed"
         SourceInitialized="Window_OnSourceInitialized">
     <Window.Resources>
+        <Style x:Key="QuickLayoutOptionStyle" TargetType="RadioButton">
+            <Setter Property="Width" Value="20" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="Foreground" Value="{DynamicResource OverlayMutedBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Border x:Name="OptionSurface" CornerRadius="3" BorderThickness="1" BorderBrush="Transparent" Background="Transparent">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="OptionSurface" Property="Background" Value="{DynamicResource OverlayMenuHoverBrush}" /></Trigger>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Setter TargetName="OptionSurface" Property="Background" Value="{DynamicResource OverlaySurfaceBrush}" />
+                                <Setter TargetName="OptionSurface" Property="BorderBrush" Value="{DynamicResource OverlayBorderBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource OverlayNormalBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="OptionSurface" Property="BorderBrush" Value="{DynamicResource OverlayNormalBrush}" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style x:Key="ExpandButtonStyle" TargetType="Button">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{DynamicResource OverlayMutedBrush}" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="ExpandSurface" CornerRadius="6" Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="{TemplateBinding BorderThickness}">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="ExpandSurface" Property="Background" Value="{DynamicResource OverlayMenuHoverBrush}" />
+                                <Setter Property="Foreground" Value="{DynamicResource OverlayTextBrush}" />
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True"><Setter Property="Opacity" Value="0.7" /></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="ExpandSurface" Property="BorderBrush" Value="{DynamicResource OverlayNormalBrush}" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
         <Style x:Key="UsageActionLinkStyle" TargetType="Button">
             <Setter Property="HorizontalAlignment" Value="Left" />
             <Setter Property="Padding" Value="2,0" />
@@ -50,19 +99,15 @@
             </Setter>
         </Style>
     </Window.Resources>
-    <Grid x:Name="OverlayRoot"
+    <Canvas x:Name="OverlayRoot"
           Width="254"
           HorizontalAlignment="Right"
           MouseEnter="OverlayRoot_OnMouseEnter"
           MouseLeave="OverlayRoot_OnMouseLeave">
-        <Grid.ColumnDefinitions>
-            <ColumnDefinition Width="220" />
-            <ColumnDefinition Width="34" />
-        </Grid.ColumnDefinitions>
 
         <Border x:Name="DetailsPanel"
                 Grid.Column="0"
-                Margin="0,12,12,12"
+                Margin="0,12,4,12"
                 Padding="14"
                 VerticalAlignment="Center"
                 Background="{DynamicResource OverlaySurfaceBrush}"
@@ -85,6 +130,7 @@
                         <ColumnDefinition Width="*" />
                         <ColumnDefinition Width="Auto" />
                         <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="Auto" />
                     </Grid.ColumnDefinitions>
                     <Grid VerticalAlignment="Center">
                         <Grid.ColumnDefinitions>
@@ -102,7 +148,7 @@
                                    FontWeight="Medium" />
                     </Grid>
                     <StackPanel Grid.Column="1"
-                                Margin="0,0,10,0"
+                                Margin="0,0,4,0"
                                 Orientation="Horizontal"
                                 VerticalAlignment="Center">
                         <Ellipse x:Name="LiveDot" Width="6" Height="6" Margin="0,0,5,0" Fill="{DynamicResource OverlayNormalBrush}" />
@@ -111,7 +157,19 @@
                                    Foreground="{DynamicResource OverlayMutedBrush}"
                                    FontSize="{StaticResource OverlayTextSmall}" />
                     </StackPanel>
-                    <Button Grid.Column="2"
+                    <Border x:Name="QuickLayoutPanel" Grid.Column="2" Padding="1" Margin="4,0,5,0" Height="20" CornerRadius="4" Background="{DynamicResource OverlayTrackBrush}">
+                        <StackPanel Orientation="Horizontal">
+                            <RadioButton x:Name="QuickHorizontalLayout" GroupName="QuickLayout" Style="{StaticResource QuickLayoutOptionStyle}"
+                                         AutomationProperties.Name="Horizontal bar" Checked="QuickLayout_OnClick">
+                                <Rectangle Width="10" Height="4" RadiusX="1" RadiusY="1" StrokeThickness="1.2" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" />
+                            </RadioButton>
+                            <RadioButton x:Name="QuickVerticalLayout" GroupName="QuickLayout" Style="{StaticResource QuickLayoutOptionStyle}"
+                                         AutomationProperties.Name="Vertical bar" Checked="QuickLayout_OnClick">
+                                <Rectangle Width="4" Height="10" RadiusX="1" RadiusY="1" StrokeThickness="1.2" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=RadioButton}}" />
+                            </RadioButton>
+                        </StackPanel>
+                    </Border>
+                    <Button Grid.Column="3"
                             HorizontalAlignment="Right"
                             VerticalAlignment="Center"
                             Style="{StaticResource OverlayIconButtonStyle}"
@@ -129,7 +187,14 @@
                     </Button>
                 </Grid>
 
-                <StackPanel Grid.Row="1" Margin="0,13,0,0">
+                <ScrollViewer x:Name="DetailsScroll" Grid.Row="1" Margin="0,13,0,0" MaxHeight="400"
+                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ScrollViewer.Resources>
+                    <Style TargetType="ScrollBar" BasedOn="{StaticResource SettingsVerticalScrollBarStyle}" />
+                </ScrollViewer.Resources>
+                <StackPanel x:Name="DetailsGroups">
+                <StackPanel x:Name="UsageDetailsGroup" Margin="0,0,8,8">
+                    <WrapPanel x:Name="MicroLimitsPanel" Visibility="Collapsed" />
                     <TextBlock x:Name="BucketNameText"
                                Text="Codex usage"
                                Foreground="{DynamicResource OverlayMutedBrush}"
@@ -161,20 +226,36 @@
                                 Style="{StaticResource UsageActionLinkStyle}" Click="RetryUsageButton_OnClick" />
                     </StackPanel>
                     <StackPanel x:Name="OtherAppsPanel" Visibility="Collapsed" />
-                    <Border Margin="0,10,0,0"
-                            Padding="0,9,0,0"
-                            BorderBrush="{DynamicResource OverlayBorderBrush}"
-                            BorderThickness="0,1,0,0">
+                    <Border x:Name="UsageLinkHost" Margin="0,10,0,0" Padding="0,9,0,0" BorderBrush="{DynamicResource OverlayBorderBrush}" BorderThickness="0,1,0,0">
                         <Button x:Name="ViewUsageButton" Style="{StaticResource UsageActionLinkStyle}" HorizontalAlignment="Right" AutomationProperties.Name="View full Codex usage" ToolTip="Open full Codex usage" Click="ViewUsageLink_OnClick">View usage</Button>
                     </Border>
                 </StackPanel>
+                <TextBlock x:Name="TelemetryProjectText" Margin="0,2,0,7" TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource OverlayTextBrush}" FontSize="11" Visibility="Collapsed" />
+                <Grid x:Name="TelemetryGrid" Margin="0,0,0,8" Visibility="Collapsed">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                    <StackPanel x:Name="SessionMetricsPanel" Margin="0,0,10,0" />
+                    <StackPanel x:Name="ProjectMetricsPanel" Grid.Column="1" />
+                </Grid>
+                <StackPanel x:Name="GitDetailsGroup" Margin="0,0,8,8">
+                    <TextBlock x:Name="ProjectGitText" Visibility="Collapsed" Margin="0,10,0,0"
+                               Foreground="{DynamicResource OverlayMutedBrush}" FontSize="{StaticResource OverlayTextSmall}"
+                               TextWrapping="Wrap" />
+                </StackPanel>
+                <StackPanel x:Name="DiagnosticsGroup" Margin="0,0,0,0">
+                    <TextBlock Text="Environment diagnostics" FontWeight="Medium" Foreground="{DynamicResource OverlayTextBrush}" />
+                    <TextBlock x:Name="DiagnosticsText" Margin="0,6,0,0" TextWrapping="Wrap"
+                               Foreground="{DynamicResource OverlayMutedBrush}" FontSize="{StaticResource OverlayTextSmall}" />
+                </StackPanel>
+                </StackPanel>
+                </ScrollViewer>
 
             </Grid>
         </Border>
 
         <Grid Grid.Column="1"
               x:Name="RailHitTarget"
-              Width="34"
+              Width="116"
               Background="#01000000"
               Cursor="SizeAll"
               AutomationProperties.Name="Usage Overlay meter"
@@ -211,8 +292,32 @@
                 </ContextMenu>
             </Grid.ContextMenu>
 
-            <StackPanel Width="34" Margin="0,0,0,5" VerticalAlignment="Bottom">
-                <Grid Width="14" Height="138" HorizontalAlignment="Center">
+            <Border CornerRadius="10" Padding="7" Background="{DynamicResource OverlaySurfaceBrush}"
+                    BorderBrush="{DynamicResource OverlayBorderBrush}" BorderThickness="1">
+            <StackPanel x:Name="VerticalInfo">
+                <TextBlock Text="Context" FontSize="10" Foreground="{DynamicResource OverlayMutedBrush}" />
+                <Grid Margin="0,3,0,2">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="39" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Grid x:Name="VerticalContextRing" Width="32" Height="32" HorizontalAlignment="Left">
+                    <Ellipse Width="28" Height="28" Stroke="{DynamicResource OverlayTrackBrush}" StrokeThickness="3" />
+                    <Path x:Name="VerticalContextRingFill" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                    <TextBlock x:Name="VerticalContextRingText" Text="—" FontSize="11" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="{DynamicResource OverlayTextBrush}" />
+                </Grid>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                    <TextBlock x:Name="VerticalContextText" FontSize="13" FontWeight="Medium" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource OverlayTextBrush}" />
+                    <TextBlock x:Name="VerticalCapacityText" FontSize="10" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource OverlayMutedBrush}" />
+                </StackPanel>
+                </Grid>
+                <TextBlock x:Name="VerticalFreeText" FontSize="10" Margin="0,2,0,0" Foreground="{DynamicResource OverlayMutedBrush}" />
+                <Border Height="1" Margin="0,6,0,5" Background="{DynamicResource OverlayBorderBrush}" />
+                <Grid Margin="0,0,0,4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" /></Grid.ColumnDefinitions>
+                    <TextBlock x:Name="VerticalQuotaText" FontSize="11" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource OverlayMutedBrush}" />
+                    <TextBlock x:Name="VerticalDiagnosticsText" Grid.Column="1" FontSize="10" Margin="4,0,0,0" VerticalAlignment="Center" />
+                </Grid>
+                <Grid>
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="18" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                <Grid Width="10" Height="36" HorizontalAlignment="Left">
                     <Border Background="{DynamicResource OverlayTrackBrush}"
                             BorderBrush="{DynamicResource OverlayBorderBrush}"
                             BorderThickness="1"
@@ -229,7 +334,7 @@
                         </Border.RenderTransform>
                     </Border>
                     <Border x:Name="LeadingCap"
-                            Width="8"
+                            Width="6"
                             Height="2"
                             VerticalAlignment="Bottom"
                             Background="{DynamicResource LeadingCapBrush}"
@@ -241,15 +346,90 @@
                         </Border.RenderTransform>
                     </Border>
                 </Grid>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center">
                 <TextBlock x:Name="RailRemainingText"
-                           Margin="0,4,0,0"
-                           HorizontalAlignment="Center"
+                           Margin="0,-2,0,0"
                            Text="--"
-                           TextAlignment="Center"
                            Foreground="{DynamicResource OverlayMutedBrush}"
-                           FontSize="{StaticResource OverlayTextSmall}"
-                           FontWeight="Medium" />
+                           FontSize="20"
+                           FontWeight="SemiBold" />
+                <TextBlock x:Name="VerticalResetText" FontSize="10" TextTrimming="CharacterEllipsis" Foreground="{DynamicResource OverlayMutedBrush}" />
+                </StackPanel>
+                </Grid>
+                <TextBlock x:Name="VerticalGitText" FontSize="10" Margin="0,6,0,0" TextTrimming="CharacterEllipsis" Visibility="Collapsed" Foreground="{DynamicResource OverlayTextBrush}" />
+                <Grid Margin="0,4,0,0" Height="24">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="*" /><ColumnDefinition Width="24" /></Grid.ColumnDefinitions>
+                <Button x:Name="VerticalExpandButton" Height="24" Margin="0,0,4,0" Background="{DynamicResource OverlaySurfaceRaisedBrush}"
+                        ToolTipService.IsEnabled="False"
+                        Style="{StaticResource ExpandButtonStyle}"
+                        Click="MicroExpand_OnClick" MouseEnter="ExpandButton_OnMouseEnter" MouseLeave="ExpandButton_OnMouseLeave" AutomationProperties.Name="Show usage details">
+                    <Path Width="10" Height="6" Data="M1,5 L5,1 L9,5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" RenderTransformOrigin="0.5,0.5">
+                        <Path.RenderTransform><RotateTransform x:Name="VerticalChevronRotation" /></Path.RenderTransform>
+                    </Path>
+                </Button>
+                <Button x:Name="VerticalSettingsButton" Grid.Column="1" Style="{StaticResource OverlayIconButtonStyle}"
+                        ToolTipService.IsEnabled="False" AutomationProperties.Name="Open settings" Click="SettingsMenuItem_OnClick">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource OverlayMutedBrush}" Text="&#xE713;" />
+                </Button>
+                </Grid>
             </StackPanel>
+            </Border>
         </Grid>
-    </Grid>
+        <Grid x:Name="HorizontalHitTarget" Grid.Row="1" Grid.ColumnSpan="2" Visibility="Collapsed"
+              Background="#01000000" Cursor="SizeAll"
+              AutomationProperties.Name="Usage Overlay horizontal meter"
+              MouseLeftButtonDown="RailHitTarget_OnMouseLeftButtonDown"
+              MouseLeftButtonUp="RailHitTarget_OnMouseLeftButtonUp"
+              MouseMove="RailHitTarget_OnMouseMove" LostMouseCapture="RailHitTarget_OnLostMouseCapture">
+            <Grid.RowDefinitions><RowDefinition Height="Auto" /><RowDefinition Height="Auto" /></Grid.RowDefinitions>
+            <Border Grid.RowSpan="2" CornerRadius="10" Background="{DynamicResource OverlaySurfaceBrush}" BorderBrush="{DynamicResource OverlayBorderBrush}" BorderThickness="1" />
+            <Grid x:Name="HorizontalInfo" Margin="10,8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="36" /><ColumnDefinition Width="*" /><ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="Auto" /><ColumnDefinition Width="26" /><ColumnDefinition Width="26" />
+                </Grid.ColumnDefinitions>
+                <Grid x:Name="ContextRing" Width="32" Height="32" VerticalAlignment="Center">
+                    <Ellipse Width="28" Height="28" Stroke="{DynamicResource OverlayTrackBrush}" StrokeThickness="3" />
+                    <Path x:Name="ContextRingFill" StrokeThickness="3" StrokeStartLineCap="Round" StrokeEndLineCap="Round" />
+                    <TextBlock x:Name="ContextRingText" Text="—" FontSize="9" FontWeight="SemiBold" VerticalAlignment="Center" HorizontalAlignment="Center" Foreground="{DynamicResource OverlayTextBrush}" />
+                </Grid>
+                <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="5,0,10,0">
+                    <TextBlock x:Name="HorizontalContextText" Text="— / —" FontSize="12" Foreground="{DynamicResource OverlayTextBrush}" TextTrimming="CharacterEllipsis" />
+                    <TextBlock x:Name="HorizontalFreeText" Text="Контекст: —" FontSize="10" Margin="0,2,0,0" Foreground="{DynamicResource OverlayMutedBrush}" TextTrimming="CharacterEllipsis" />
+                </StackPanel>
+                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock x:Name="HorizontalProviderText" Margin="0,0,5,0" FontSize="10" Foreground="{DynamicResource OverlayMutedBrush}" />
+                        <TextBlock x:Name="HorizontalPercentText" FontSize="11" FontWeight="SemiBold" />
+                    </StackPanel>
+                    <TextBlock x:Name="HorizontalResetText" FontSize="10" Margin="0,2,0,0" Foreground="{DynamicResource OverlayMutedBrush}" />
+                </StackPanel>
+                <TextBlock x:Name="HorizontalDiagnosticsText" Grid.Column="3" Margin="7,0,2,0" VerticalAlignment="Center" FontSize="11" />
+                <Border Grid.Column="4" Grid.ColumnSpan="2" Height="28" VerticalAlignment="Center" CornerRadius="7" Background="{DynamicResource OverlaySurfaceRaisedBrush}" />
+                <Button x:Name="ExpandMicroButton" Grid.Column="4" Width="24" Height="28"
+                        VerticalAlignment="Center"
+                        Style="{StaticResource ExpandButtonStyle}" Click="MicroExpand_OnClick"
+                        MouseEnter="ExpandButton_OnMouseEnter" MouseLeave="ExpandButton_OnMouseLeave"
+                        AutomationProperties.Name="Show usage details" ToolTipService.IsEnabled="False">
+                    <Path Width="10" Height="6" Data="M1,5 L5,1 L9,5" Stroke="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          StrokeThickness="1.6" StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round" RenderTransformOrigin="0.5,0.5">
+                        <Path.RenderTransform><RotateTransform x:Name="HorizontalChevronRotation" /></Path.RenderTransform>
+                    </Path>
+                </Button>
+                <Button x:Name="SettingsButton" Grid.Column="5" Height="28" VerticalAlignment="Center" Style="{StaticResource OverlayIconButtonStyle}"
+                        ToolTipService.IsEnabled="False" AutomationProperties.Name="Open settings" Click="SettingsMenuItem_OnClick">
+                    <TextBlock FontFamily="Segoe MDL2 Assets" FontSize="14" Foreground="{DynamicResource OverlayMutedBrush}" Text="&#xE713;" />
+                </Button>
+                <TextBlock x:Name="HorizontalGitText" Visibility="Collapsed" />
+            </Grid>
+            <Grid x:Name="HorizontalTrack" Grid.Row="1" Height="3" Margin="8,0,8,3">
+                <Border Background="{DynamicResource OverlayTrackBrush}" CornerRadius="6" />
+                <Border x:Name="HorizontalFill" CornerRadius="6" RenderTransformOrigin="0,0.5">
+                    <Border.Background><SolidColorBrush x:Name="HorizontalFillBrush" Color="{DynamicResource OverlayNormalColor}" /></Border.Background>
+                    <Border.RenderTransform><ScaleTransform x:Name="HorizontalFillScale" ScaleX="0" /></Border.RenderTransform>
+                </Border>
+            </Grid>
+        </Grid>
+    </Canvas>
 </Window>

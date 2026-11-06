@@ -6,6 +6,7 @@ using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Threading;
 using System.Windows.Interop;
+using System.Windows.Documents;
 using System.Diagnostics.CodeAnalysis;
 using System.Net.Http;
 using System.Text.Json;
@@ -17,6 +18,7 @@ using CodexUsage.Core.Settings;
 using CodexUsage.Core.Reporting;
 using UsageOverlay.Infrastructure;
 using UsageOverlay.Services;
+using Localization = UsageOverlay.Infrastructure.Localization;
 
 namespace UsageOverlay;
 
@@ -26,17 +28,9 @@ namespace UsageOverlay;
     Justification = "The WPF window lifecycle disposes services and cancellation sources in Closed.")]
 public partial class MainWindow : Window
 {
-    private const double CollapsedWidth = 34;
-    private const double CollapsedHeight = 190;
-    private const double MinimumExpandedHeight = 218;
-    private const double MaximumExpandedHeight = 560;
-    private const double ExpandedWidth = 254;
-    private const double DetailsColumnWidth = 220;
-    // The detail card is drawn 24px lower than its layout slot to line up with the rail.
-    private const double DetailsVerticalShift = 24;
     private const double RightInset = 18;
     private const double BottomInset = 46;
-    private const double RailUsableHeight = 134;
+    private const double RailUsableHeight = 32;
     private const double WindowPadding = 8;
     private const int HotKeyMessage = 0x0312;
     private const int EscapeHotKeyIdentifier = 0x0C0D;
@@ -88,23 +82,29 @@ public partial class MainWindow : Window
     private bool _isPinned;
     private bool _isManuallyHidden;
     private bool _isClosing;
+    private bool _gitRefreshRunning;
+    private DateTimeOffset _nextGitRefresh;
+    private ProjectGitSnapshot? _projectGit;
     private bool _isDragging;
     private bool _hasDragged;
     private bool _escapeHotKeyRegistered;
     private System.Windows.Point _dragStartScreen;
-    private double _dragStartLeft;
-    private double _dragStartTop;
+    private System.Windows.Point _dragStartAnchor;
     private WindowBounds? _lastBounds;
+    private IntPtr _lastHostWindow;
     private Task? _updateCheckTask;
     private Uri? _pendingUpdateUri;
 
     public MainWindow(OverlayOptions options, AppLogger logger)
     {
-        InitializeComponent();
         _options = options;
         _logger = logger;
         _settingsStore = new OverlaySettingsStore(logger);
         _settings = _settingsStore.Load();
+        Localization.Language = _settings.Language;
+        InitializeComponent();
+        Localization.Apply(this);
+        ApplyRailLayout();
         _usageReporter = new UsageReporter(_reportingClient,
             new Uri("https://haroone.com/api/usage-overlay.php"),
             System.IO.Path.Combine(AppPaths.DataDirectory, "reporting.json"), AppVersion.Current);
@@ -144,6 +144,7 @@ public partial class MainWindow : Window
             Interval = TimeSpan.FromMilliseconds(220)
         };
         _collapseTimer.Tick += CollapseTimer_OnTick;
+        _hoverTimer.Tick += HoverTimer_OnTick;
 
         _applicationIcon = LoadApplicationIcon();
         _notifyIcon = CreateNotifyIcon();
@@ -185,7 +186,7 @@ public partial class MainWindow : Window
         {
             foreach (var state in CreateDemoStates(demoPercent))
             {
-                _states[state.Provider] = state;
+                _states[state.Provider] = ForDisplay(state);
             }
 
             _displayedProvider = _options.DemoProvider ?? UsageProviderKind.Codex;
@@ -202,6 +203,7 @@ public partial class MainWindow : Window
         }
 
         StartProviders();
+        _telemetry.Start();
         Render();
         UpdateUsageReporting();
         UpdateWindowPosition();
@@ -224,7 +226,9 @@ public partial class MainWindow : Window
         _reportingClient.Dispose();
         ThemeManager.Instance.ThemeApplied -= ThemeManager_OnThemeApplied;
         _windowTrackingTimer.Stop();
+        _telemetry.Dispose();
         _collapseTimer.Stop();
+        _hoverTimer.Stop();
         NativeHotKey.Unregister(_windowHandle, EscapeHotKeyIdentifier);
         _windowSource?.RemoveHook(WindowProcedure);
         _settingsWindow?.Close();
@@ -326,12 +330,56 @@ public partial class MainWindow : Window
 
     private void WindowTrackingTimer_OnTick(object? sender, EventArgs eventArgs)
     {
+        if (_options.DemoPercent is null && !_isClosing && DateTimeOffset.UtcNow >= _nextTelemetryRefresh && !_telemetryRefreshRunning)
+        {
+            _nextTelemetryRefresh = DateTimeOffset.UtcNow.AddSeconds(1);
+            _ = RefreshTelemetryAsync();
+        }
+        if (_options.DemoPercent is null && DateTimeOffset.UtcNow >= _nextGitRefresh && !_gitRefreshRunning)
+        {
+            _nextGitRefresh = DateTimeOffset.UtcNow.AddSeconds(5);
+            _ = RefreshProjectGitAsync();
+        }
         if (_isDragging)
         {
             return;
         }
 
         UpdateWindowPosition();
+    }
+
+    private async Task RefreshProjectGitAsync()
+    {
+        _gitRefreshRunning = true;
+        try
+        {
+            var selected = _session.Cwd is { } cwd && _session.ThreadId is { } id
+                ? new SelectedProject(id, System.IO.Path.GetFileName(cwd.TrimEnd('\\', '/')), cwd) : null;
+            if (_projectGit?.Project != selected)
+            {
+                _projectGit = null;
+                RenderProjectGit();
+            }
+            var snapshot = selected is null ? null : await ProjectGitStatus.ReadAsync(selected);
+            if (_isClosing || selected?.Id != _session.ThreadId || selected?.Root != _session.Cwd) return;
+            _projectGit = snapshot;
+            _environmentNotices = await Task.Run(() => EnvironmentDiagnostics.Read(selected, DateTimeOffset.Now));
+            var resources = await _projectResources.ReadAsync(snapshot, selected?.Root, DateTimeOffset.UtcNow);
+            if (_isClosing || selected?.Id != _session.ThreadId || selected?.Root != _session.Cwd) return;
+            _resources = resources.Resources;
+            _pullRequest = resources.PullRequest;
+            if (!_isClosing) Render();
+        }
+        finally { _gitRefreshRunning = false; }
+    }
+
+    private void RenderProjectGit()
+    {
+        ProjectGitText.Visibility = _displayedProvider == UsageProviderKind.Codex && _projectGit is not null
+            ? Visibility.Visible : Visibility.Collapsed;
+        ProjectGitText.Text = _projectGit is null ? string.Empty : ProjectGitStatus.Format(_projectGit, DateTimeOffset.Now);
+        GitDetailsGroup.Visibility = ProjectGitText.Visibility;
+        UpdateExpandedHeight();
     }
 
     private void UpdateWindowPosition()
@@ -384,10 +432,12 @@ public partial class MainWindow : Window
             return;
         }
 
-        var hasActiveCodex = HostWindowLocator.TryGetActiveHost(IsProviderEnabled, _claude.IsClaudeCodeHost, out var host);
+        var hasActiveCodex = HostWindowLocator.TryGetActiveHost(
+            provider => IsOverlayHost(provider) && IsProviderEnabled(provider), _claude.IsClaudeCodeHost, out var host, _lastHostWindow);
         var bounds = host.Bounds;
         if (hasActiveCodex)
         {
+            _lastHostWindow = host.WindowHandle;
             if (host.IsLightTheme is { } isLightTheme)
             {
                 ThemeManager.Instance.RefreshFromCodexTheme(isLightTheme);
@@ -452,35 +502,13 @@ public partial class MainWindow : Window
 
     private void PositionWithin(WindowBounds bounds)
     {
-        var baseLeft = _settings.Placement switch
-        {
-            HorizontalPlacement.LeftEdge => bounds.Left + RightInset,
-            HorizontalPlacement.Custom =>
-                bounds.Left + (bounds.Right - bounds.Left) * _settings.CustomXRatio -
-                (Width - CollapsedWidth / 2),
-            _ => bounds.Right - RightInset - Width
-        };
-        var maximumLeft = Math.Max(bounds.Left + WindowPadding, bounds.Right - Width - WindowPadding);
-        Left = Math.Clamp(
-            baseLeft + _settings.HorizontalOffset,
-            bounds.Left + WindowPadding,
-            maximumLeft);
-
-        var baseTop = _settings.Placement == HorizontalPlacement.Custom
-            ? OverlayPositionMath.CalculateCustomTop(
-                bounds.Top + (bounds.Bottom - bounds.Top) * _settings.CustomYRatio,
-                Height,
-                CollapsedHeight,
-                _settings.VerticalOffset)
-            : bounds.Bottom - BottomInset - Height - _settings.VerticalOffset;
-        var maximumTop = Math.Max(bounds.Top + WindowPadding, bounds.Bottom - Height - WindowPadding);
-        Top = Math.Clamp(baseTop, bounds.Top + WindowPadding, maximumTop);
+        ApplyRailLayoutWithin(bounds);
     }
 
     private void PositionForDemo()
     {
         var workArea = SystemParameters.WorkArea;
-        PositionWithin(new WindowBounds(
+        PositionWithin(_lastBounds ?? new WindowBounds(
             workArea.Left,
             workArea.Top,
             workArea.Right,
@@ -511,7 +539,7 @@ public partial class MainWindow : Window
     private void OverlayRoot_OnMouseEnter(object sender, System.Windows.Input.MouseEventArgs eventArgs)
     {
         _collapseTimer.Stop();
-        ExpandDetails();
+        if (_isExpanded) ExpandDetails();
     }
 
     private void OverlayRoot_OnMouseLeave(object sender, System.Windows.Input.MouseEventArgs eventArgs)
@@ -526,6 +554,12 @@ public partial class MainWindow : Window
     private void CollapseTimer_OnTick(object? sender, EventArgs eventArgs)
     {
         _collapseTimer.Stop();
+        // Native resizing can invalidate WPF mouse-over state before hit testing catches up.
+        if (_isExpanded && IsPointerOverOverlay())
+        {
+            if (!OverlayRoot.IsMouseOver) _collapseTimer.Start();
+            return;
+        }
         CollapseDetails();
     }
 
@@ -539,10 +573,10 @@ public partial class MainWindow : Window
         _collapseTimer.Stop();
         _isDragging = true;
         _hasDragged = false;
-        _dragStartScreen = RailHitTarget.PointToScreen(eventArgs.GetPosition(RailHitTarget));
-        _dragStartLeft = Left;
-        _dragStartTop = Top;
-        _ = RailHitTarget.CaptureMouse();
+        _dragTarget = (FrameworkElement)sender;
+        _dragStartScreen = _dragTarget.PointToScreen(eventArgs.GetPosition(_dragTarget));
+        _dragStartAnchor = new System.Windows.Point(Left + Canvas.GetLeft(_dragTarget) + _dragTarget.Width / 2, Top + Canvas.GetTop(_dragTarget) + _dragTarget.Height / 2);
+        _ = _dragTarget.CaptureMouse();
         eventArgs.Handled = true;
     }
 
@@ -553,7 +587,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var currentScreen = RailHitTarget.PointToScreen(eventArgs.GetPosition(RailHitTarget));
+        var target = _dragTarget ?? RailHitTarget;
+        var currentScreen = target.PointToScreen(eventArgs.GetPosition(target));
         var dpi = VisualTreeHelper.GetDpi(this);
         var horizontalChange = (currentScreen.X - _dragStartScreen.X) / dpi.DpiScaleX;
         var verticalChange = (currentScreen.Y - _dragStartScreen.Y) / dpi.DpiScaleY;
@@ -565,14 +600,7 @@ public partial class MainWindow : Window
 
         _hasDragged = true;
         var bounds = GetCurrentPlacementBounds();
-        Left = Math.Clamp(
-            _dragStartLeft + horizontalChange,
-            bounds.Left + WindowPadding,
-            Math.Max(bounds.Left + WindowPadding, bounds.Right - Width - WindowPadding));
-        Top = Math.Clamp(
-            _dragStartTop + verticalChange,
-            bounds.Top + WindowPadding,
-            Math.Max(bounds.Top + WindowPadding, bounds.Bottom - Height - WindowPadding));
+        ApplyRailLayoutWithin(bounds, new System.Windows.Point(_dragStartAnchor.X + horizontalChange, _dragStartAnchor.Y + verticalChange));
         eventArgs.Handled = true;
     }
 
@@ -586,7 +614,7 @@ public partial class MainWindow : Window
         var wasDragged = _hasDragged;
         _isDragging = false;
         _hasDragged = false;
-        RailHitTarget.ReleaseMouseCapture();
+        _dragTarget?.ReleaseMouseCapture();
 
         if (wasDragged)
         {
@@ -691,8 +719,9 @@ public partial class MainWindow : Window
         var bounds = GetCurrentPlacementBounds();
         var width = Math.Max(1, bounds.Right - bounds.Left);
         var height = Math.Max(1, bounds.Bottom - bounds.Top);
-        var railCenterX = Left + Width - CollapsedWidth / 2;
-        var customAnchorY = OverlayPositionMath.CalculateCustomAnchorY(Top, Height, CollapsedHeight);
+        var target = IsHorizontal ? HorizontalHitTarget : RailHitTarget;
+        var railCenterX = Left + Canvas.GetLeft(target) + target.Width / 2;
+        var customAnchorY = Top + Canvas.GetTop(target) + target.Height / 2;
 
         _settings = _settings with
         {
@@ -702,8 +731,9 @@ public partial class MainWindow : Window
             CustomXRatio = Math.Clamp((railCenterX - bounds.Left) / width, 0, 1),
             CustomYRatio = Math.Clamp((customAnchorY - bounds.Top) / height, 0, 1)
         };
-        PersistSettings();
-        _logger.Info(
+        var saved = PersistSettings();
+        _settingsWindow?.UpdatePosition(_settings);
+        if (saved) _logger.Info(
             $"Saved custom overlay position at {_settings.CustomXRatio:P0} x, " +
             $"{_settings.CustomYRatio:P0} y.");
         UpdateWindowPosition();
@@ -711,18 +741,25 @@ public partial class MainWindow : Window
 
     private void ExpandDetails()
     {
+        _collapseTimer.Stop();
         if (_isExpanded)
         {
+            if (_detailsClosing)
+            {
+                _detailsClosing = false;
+                DetailsPanel.BeginAnimation(OpacityProperty, null);
+                DetailsPanel.Opacity = 1;
+            }
             return;
         }
 
         _isExpanded = true;
-        Width = ExpandedWidth;
+        _detailsClosing = false;
+        DetailsPanel.BeginAnimation(OpacityProperty, null);
+        ApplyRailLayout();
         DetailsPanel.Visibility = Visibility.Visible;
-        Height = MeasureExpandedHeight();
-        RepositionAfterWidthChange();
 
-        if (!SystemParameters.ClientAreaAnimation)
+        if (!_settings.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
         {
             DetailsPanel.Opacity = 1;
             DetailsTranslate.X = 0;
@@ -735,45 +772,41 @@ public partial class MainWindow : Window
             {
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             });
-        DetailsTranslate.BeginAnimation(
-            TranslateTransform.XProperty,
-            new DoubleAnimation(8, 0, TimeSpan.FromMilliseconds(160))
-            {
-                EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
-            });
     }
 
     private void CollapseDetails()
     {
-        if (!_isExpanded || _isPinned)
+        if (!_isExpanded || _isPinned || _detailsClosing)
         {
             return;
         }
 
-        if (!SystemParameters.ClientAreaAnimation)
+        if (!_settings.AnimationsEnabled || !SystemParameters.ClientAreaAnimation)
         {
             DetailsPanel.Opacity = 0;
             DetailsPanel.Visibility = Visibility.Collapsed;
-            Width = CollapsedWidth;
-            Height = CollapsedHeight;
             _isExpanded = false;
-            RepositionAfterWidthChange();
+            ApplyRailLayout();
             return;
         }
 
+        _detailsClosing = true;
         var opacity = new DoubleAnimation(DetailsPanel.Opacity, 0, TimeSpan.FromMilliseconds(120));
         opacity.Completed += (_, _) =>
         {
+            if (!_detailsClosing || _isPinned) return;
+            if (IsPointerOverOverlay())
+            {
+                ExpandDetails();
+                if (!OverlayRoot.IsMouseOver) _collapseTimer.Start();
+                return;
+            }
             DetailsPanel.Visibility = Visibility.Collapsed;
-            Width = CollapsedWidth;
-            Height = CollapsedHeight;
             _isExpanded = false;
-            RepositionAfterWidthChange();
+            _detailsClosing = false;
+            ApplyRailLayout();
         };
         DetailsPanel.BeginAnimation(OpacityProperty, opacity);
-        DetailsTranslate.BeginAnimation(
-            TranslateTransform.XProperty,
-            new DoubleAnimation(0, 8, TimeSpan.FromMilliseconds(120)));
     }
 
     private void RepositionAfterWidthChange()
@@ -788,6 +821,14 @@ public partial class MainWindow : Window
         }
     }
 
+    // Claude supplies usage data, while the overlay belongs only to the Codex window.
+    internal static bool IsOverlayHost(UsageProviderKind provider) => provider == UsageProviderKind.Codex;
+
+    internal static ProviderUsageState ForDisplay(ProviderUsageState state) =>
+        state.Provider == UsageProviderKind.Claude
+            ? state with { Windows = state.Windows.OrderByDescending(window => window.Window.WindowDurationMinutes).ToArray() }
+            : state;
+
     private void Provider_OnStateChanged(object? sender, ProviderUsageState state)
     {
         _ = Dispatcher.InvokeAsync(() =>
@@ -797,7 +838,7 @@ public partial class MainWindow : Window
                 return;
             }
 
-            _states[state.Provider] = state;
+            _states[state.Provider] = ForDisplay(state);
             EvaluateNotifications(state);
             UpdateTrayText();
             Render();
@@ -821,15 +862,29 @@ public partial class MainWindow : Window
 
     private void Render()
     {
+        if (_rendering) return;
+        _rendering = true;
+        try { RenderContent(); }
+        finally { _rendering = false; }
+        ApplyRailLayout();
+    }
+
+    private void RenderContent()
+    {
         var state = CurrentState;
         HeaderText.Text = state.DisplayName;
-        HeaderBadgeHost.Child = ProviderBadge.Create(state.Provider, 18);
-        StatusText.Text = _options.DemoPercent is not null ? "Demo" : state.Connection switch
+        var badgeKey = $"{state.Provider}:{ThemeManager.Instance.IsEffectiveDark}";
+        if (!Equals(HeaderBadgeHost.Tag, badgeKey))
         {
-            ProviderConnection.SignedOut => "Sign in",
-            ProviderConnection.Unavailable => "Unavailable",
-            ProviderConnection.Stale => "Stale",
-            _ => state.StatusText
+            HeaderBadgeHost.Tag = badgeKey;
+            HeaderBadgeHost.Child = ProviderBadge.Create(state.Provider, 18);
+        }
+        StatusText.Text = _options.DemoPercent is not null ? Localization.Text("Demo") : state.Connection switch
+        {
+            ProviderConnection.SignedOut => Localization.Text("Sign in"),
+            ProviderConnection.Unavailable => Localization.Text("Unavailable"),
+            ProviderConnection.Stale => Localization.Text("Stale"),
+            _ => Localization.Status(state.StatusText)
         };
         LiveDot.Fill = new SolidColorBrush((System.Windows.Media.Color)FindResource(state.Connection switch
         {
@@ -840,8 +895,8 @@ public partial class MainWindow : Window
         RailRemainingText.Visibility = _settings.ShowCompactPercentage
             ? Visibility.Visible
             : Visibility.Collapsed;
-        AutomationProperties.SetName(ViewUsageButton, $"View full {state.DisplayName} usage");
-        ViewUsageButton.ToolTip = $"Open full {state.DisplayName} usage";
+        AutomationProperties.SetName(ViewUsageButton, Localization.Format("View full {0} usage", state.DisplayName));
+        ViewUsageButton.ToolTip = Localization.Format("Open full {0} usage", state.DisplayName);
 
         if (state.HasUsage)
         {
@@ -852,18 +907,20 @@ public partial class MainWindow : Window
             ApplyConnectionState(state);
         }
 
-        RenderOtherApps();
+        RenderProjectGit();
+        RenderDiagnostics();
+        UpdateHorizontalSummary();
         var needsHelp = state.Connection is ProviderConnection.SignedOut or ProviderConnection.Unavailable
             or ProviderConnection.Disconnected or ProviderConnection.Off or ProviderConnection.Stale;
         RecoveryActionsPanel.Visibility = needsHelp ? Visibility.Visible : Visibility.Collapsed;
         RecoveryActionButton.Content = NeedsClaudeLogin(state)
-            ? "Copy sign-in command" : "Open settings";
-        AutomationProperties.SetName(RecoveryActionButton, $"{RecoveryActionButton.Content} for {state.DisplayName}");
+            ? Localization.Text("Copy sign-in command") : Localization.Text("Open settings");
+        AutomationProperties.SetName(RecoveryActionButton, $"{RecoveryActionButton.Content}: {state.DisplayName}");
         RecoveryActionButton.ToolTip = NeedsClaudeLogin(state)
-            ? "Copy claude auth login. Run it in your terminal, then complete sign-in in your browser." : "Open usage source and connection settings";
+            ? Localization.Text("Copy claude auth login. Run it in your terminal, then complete sign-in in your browser.") : Localization.Text("Open usage source and connection settings");
         RetryUsageButton.Visibility = state.Connection is ProviderConnection.Off or ProviderConnection.Disconnected
             ? Visibility.Collapsed : Visibility.Visible;
-        AutomationProperties.SetName(RetryUsageButton, $"Retry {state.DisplayName} usage now");
+        AutomationProperties.SetName(RetryUsageButton, Localization.Format("Retry {0} usage now", state.DisplayName));
         UpdateExpandedHeight();
     }
 
@@ -874,6 +931,8 @@ public partial class MainWindow : Window
         AnimatedRemainingPercent = 0;
         UsageFillBrush.BeginAnimation(SolidColorBrush.ColorProperty, null);
         UsageFillBrush.Color = (System.Windows.Media.Color)FindResource("OverlayMutedColor");
+        HorizontalFillBrush.Color = UsageFillBrush.Color;
+        UsagePercentText.Foreground = (System.Windows.Media.Brush)FindResource("OverlayMutedBrush");
         LeadingCap.Opacity = 0;
         RailRemainingText.Text = state.Connection is ProviderConnection.SignedOut or ProviderConnection.Unavailable ? "!"
             : state.Connection == ProviderConnection.Connecting ? "…" : "--";
@@ -886,15 +945,15 @@ public partial class MainWindow : Window
 
         UsagePercentText.Text = state.Connection switch
         {
-            ProviderConnection.Live or ProviderConnection.Stale when state.Summary is not null => state.Summary,
-            ProviderConnection.Off => $"{state.DisplayName} is off",
-            ProviderConnection.SignedOut => state.StatusText,
-            ProviderConnection.Disconnected => "CLI disconnected",
-            ProviderConnection.Unavailable => state.StatusText,
-            _ when state.Provider == UsageProviderKind.Claude && state.StatusText == "Waiting" => "Waiting for Claude Code",
-            _ => "Loading usage…"
+            ProviderConnection.Live or ProviderConnection.Stale when state.Summary is not null => Localization.Status(state.Summary),
+            ProviderConnection.Off => Localization.Format("{0} is off", state.DisplayName),
+            ProviderConnection.SignedOut => Localization.Status(state.StatusText),
+            ProviderConnection.Disconnected => Localization.Text("CLI disconnected"),
+            ProviderConnection.Unavailable => Localization.Status(state.StatusText),
+            _ when state.Provider == UsageProviderKind.Claude && state.StatusText == "Waiting" => Localization.Text("Waiting for Claude Code"),
+            _ => Localization.Text("Loading usage…")
         };
-        ResetText.Text = state.Detail;
+        ResetText.Text = Localization.Status(state.Detail);
         ResetText.Visibility = state.Detail.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
 
         var summary = $"{state.DisplayName}: {UsagePercentText.Text}. {state.Detail}".Trim();
@@ -905,20 +964,27 @@ public partial class MainWindow : Window
     private void ApplyUsage(ProviderUsageState state)
     {
         RailRemainingText.Foreground = (System.Windows.Media.Brush)FindResource("OverlayMutedBrush");
-        RailHitTarget.ToolTip = state.Connection == ProviderConnection.Stale ? state.Detail : null;
+        RailHitTarget.ToolTip = state.Connection == ProviderConnection.Stale ? Localization.Status(state.Detail) : null;
         var lead = state.Windows[0];
         var usedPercent = UsageLevelResolver.Normalize(lead.Window.UsedPercent);
         var remainingPercent = UsageLevelResolver.RemainingFromUsed(usedPercent);
         var showingUsed = _settings.PrimaryDisplay == PrimaryUsageDisplay.Used;
         var primaryPercent = showingUsed ? usedPercent : remainingPercent;
-        var primaryLabel = showingUsed ? "used" : "left";
-        BucketNameText.Text = lead.Label;
+        var primaryLabel = Localization.Text(showingUsed ? "#used" : "#left");
+        BucketNameText.Text = Localization.Limit(lead.Label);
         BucketNameText.Visibility = Visibility.Visible;
         ResetText.Text = FormatSecondaryLine(lead.Window);
+        ResetText.Inlines.Clear();
+        var secondary = _settings.PrimaryDisplay == PrimaryUsageDisplay.Used ? remainingPercent : usedPercent;
+        ResetText.Inlines.Add(new Run($"{Math.Round(secondary)}% " + Localization.Text(showingUsed ? "#left" : "#used")));
+        ResetText.Inlines.Add(new LineBreak());
+        ResetText.Inlines.Add(new Run(Localization.Reset(lead.Window.ResetsAt, DateTimeOffset.Now)) { Foreground = BudgetBrush(lead.Window) });
         ResetText.Visibility = Visibility.Visible;
+        UsagePercentText.Foreground = new SolidColorBrush(LevelColor(usedPercent));
+        RailRemainingText.Foreground = UsagePercentText.Foreground;
 
         var notes = new[] { state.Summary, state.Detail }
-            .Where(note => !string.IsNullOrWhiteSpace(note))
+            .Where(note => !string.IsNullOrWhiteSpace(note)).Select(note => Localization.Status(note!))
             .ToArray();
         SummaryText.Text = string.Join(Environment.NewLine, notes);
         SummaryText.Visibility = notes.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
@@ -931,7 +997,7 @@ public partial class MainWindow : Window
 
         AnimateUsageValue(primaryPercent, usedPercent);
         var summary =
-            $"{state.DisplayName} {lead.Label.ToLowerInvariant()}: {Math.Round(primaryPercent)} percent {primaryLabel}. {ResetText.Text}";
+            $"{state.DisplayName} {Localization.Limit(lead.Label).ToLowerInvariant()}: {Math.Round(primaryPercent)}% {primaryLabel}. {ResetText.Text}";
         AutomationProperties.SetName(RailHitTarget, summary);
     }
 
@@ -951,7 +1017,7 @@ public partial class MainWindow : Window
         var content = new StackPanel();
         content.Children.Add(new TextBlock
         {
-            Text = "Other apps",
+            Text = Localization.Text("Other apps"),
             Foreground = (System.Windows.Media.Brush)FindResource("OverlayMutedBrush"),
             FontSize = (double)FindResource("OverlayTextSmall"),
             Margin = new Thickness(0, 0, 0, 2)
@@ -999,12 +1065,12 @@ public partial class MainWindow : Window
             var used = UsageLevelResolver.Normalize(lead.Window.UsedPercent);
             var showingUsed = _settings.PrimaryDisplay == PrimaryUsageDisplay.Used;
             valueText = $"{Math.Round(showingUsed ? used : UsageLevelResolver.RemainingFromUsed(used))}% " +
-                        (showingUsed ? "used" : "left");
+                        Localization.Text(showingUsed ? "#used" : "#left");
             valueBrush = new SolidColorBrush(LevelColor(used));
         }
         else
         {
-            valueText = state.Summary ?? state.StatusText;
+            valueText = Localization.Status(state.Summary ?? state.StatusText);
             valueBrush = (System.Windows.Media.Brush)FindResource("OverlayMutedBrush");
         }
 
@@ -1029,10 +1095,10 @@ public partial class MainWindow : Window
             HorizontalContentAlignment = System.Windows.HorizontalAlignment.Stretch,
             Cursor = System.Windows.Input.Cursors.Hand,
             Focusable = false,
-            ToolTip = $"Show {state.DisplayName} usage",
+            ToolTip = Localization.Format("Show {0} usage", state.DisplayName),
             Template = CreateFlatButtonTemplate()
         };
-        AutomationProperties.SetName(button, $"Show {state.DisplayName} usage: {valueText}");
+        AutomationProperties.SetName(button, Localization.Format("Show {0} usage: {1}", state.DisplayName, valueText));
         var provider = state.Provider;
         button.Click += (_, eventArgs) =>
         {
@@ -1052,28 +1118,9 @@ public partial class MainWindow : Window
         return new ControlTemplate(typeof(System.Windows.Controls.Button)) { VisualTree = border };
     }
 
-    private double MeasureExpandedHeight()
-    {
-        DetailsPanel.Measure(new System.Windows.Size(DetailsColumnWidth, double.PositiveInfinity));
-        return Math.Clamp(
-            Math.Ceiling(DetailsPanel.DesiredSize.Height + DetailsVerticalShift),
-            MinimumExpandedHeight,
-            MaximumExpandedHeight);
-    }
-
     private void UpdateExpandedHeight()
     {
-        if (!_isExpanded)
-        {
-            return;
-        }
-
-        var height = MeasureExpandedHeight();
-        if (Math.Abs(Height - height) > 0.5)
-        {
-            Height = height;
-            RepositionAfterWidthChange();
-        }
+        if (_isExpanded && !_rendering) ApplyRailLayout();
     }
 
     private System.Windows.Media.Color LevelColor(double usedPercent) =>
@@ -1093,14 +1140,14 @@ public partial class MainWindow : Window
         var displayed = _settings.PrimaryDisplay == PrimaryUsageDisplay.Used
             ? used
             : UsageLevelResolver.RemainingFromUsed(used);
-        var suffix = _settings.PrimaryDisplay == PrimaryUsageDisplay.Used ? "used" : "left";
+        var suffix = Localization.Text(_settings.PrimaryDisplay == PrimaryUsageDisplay.Used ? "#used" : "#left");
 
         var header = new Grid();
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         header.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         header.Children.Add(new TextBlock
         {
-            Text = row.Label,
+            Text = Localization.Limit(row.Label),
             Foreground = (System.Windows.Media.Brush)FindResource("OverlayMutedBrush"),
             FontSize = (double)FindResource("OverlayTextSmall"),
             TextTrimming = TextTrimming.CharacterEllipsis
@@ -1120,8 +1167,8 @@ public partial class MainWindow : Window
         content.Children.Add(header);
         content.Children.Add(new TextBlock
         {
-            Text = ResetTimeFormatter.Format(row.Window.ResetsAt, DateTimeOffset.Now),
-            Foreground = (System.Windows.Media.Brush)FindResource("OverlayMutedBrush"),
+            Text = Localization.Reset(row.Window.ResetsAt, DateTimeOffset.Now),
+            Foreground = BudgetBrush(row.Window),
             FontSize = (double)FindResource("OverlayTextSmall"),
             Margin = new Thickness(0, 3, 0, 0)
         });
@@ -1142,9 +1189,9 @@ public partial class MainWindow : Window
         var secondaryPercent = _settings.PrimaryDisplay == PrimaryUsageDisplay.Used
             ? UsageLevelResolver.RemainingFromUsed(used)
             : used;
-        var secondaryLabel = _settings.PrimaryDisplay == PrimaryUsageDisplay.Used ? "left" : "used";
-        return $"{Math.Round(secondaryPercent)}% {secondaryLabel}  ·  " +
-               ResetTimeFormatter.Format(window.ResetsAt, DateTimeOffset.Now);
+        var secondaryLabel = Localization.Text(_settings.PrimaryDisplay == PrimaryUsageDisplay.Used ? "#left" : "#used");
+        var separator = Localization.Language == AppLanguage.Russian ? "\n" : "  ";
+        return $"{Math.Round(secondaryPercent)}% {secondaryLabel}{separator}" + Localization.Reset(window.ResetsAt, DateTimeOffset.Now);
     }
 
     private void EvaluateNotifications(ProviderUsageState state)
@@ -1166,12 +1213,11 @@ public partial class MainWindow : Window
         foreach (var alert in alerts)
         {
             var remaining = Math.Round(UsageLevelResolver.RemainingFromUsed(alert.Window.Window.UsedPercent));
-            _notifyIcon.BalloonTipTitle = alert.Level == UsageLevel.Critical
-                ? $"{state.DisplayName} usage is nearly exhausted"
-                : $"{state.DisplayName} usage is running low";
+            _notifyIcon.BalloonTipTitle = Localization.Format(alert.Level == UsageLevel.Critical
+                ? "{0} usage is nearly exhausted" : "{0} usage is running low", state.DisplayName);
             _notifyIcon.BalloonTipText =
-                $"{alert.Window.Label}: {remaining}% left. " +
-                ResetTimeFormatter.Format(alert.Window.Window.ResetsAt, DateTimeOffset.Now);
+                $"{Localization.Limit(alert.Window.Label)}: {remaining}% {Localization.Text("#left")}. " +
+                Localization.Reset(alert.Window.Window.ResetsAt, DateTimeOffset.Now);
             _notifyIcon.ShowBalloonTip(6000);
             _logger.Info(
                 $"Displayed a {alert.Level.ToString().ToLowerInvariant()} usage alert for {alert.Window.Key}.");
@@ -1189,10 +1235,10 @@ public partial class MainWindow : Window
             {
                 var used = UsageLevelResolver.Normalize(state!.Lead!.Window.UsedPercent);
                 var value = showingUsed ? used : UsageLevelResolver.RemainingFromUsed(used);
-                return $"{state.DisplayName} {Math.Round(value)}% {(showingUsed ? "used" : "left")}";
+                return $"{state.DisplayName} {Math.Round(value)}% {Localization.Text(showingUsed ? "#used" : "#left")}";
             })
             .ToArray();
-        var text = parts.Length == 0 ? "Usage Overlay" : "Usage Overlay" + Environment.NewLine + string.Join(" · ", parts);
+        var text = parts.Length == 0 ? "Usage Overlay" : "Usage Overlay" + Environment.NewLine + string.Join("  ", parts);
         // Windows limits notification-area tooltips to 127 characters.
         _notifyIcon.Text = text.Length <= 127 ? text : text[..126] + "…";
     }
@@ -1202,6 +1248,7 @@ public partial class MainWindow : Window
         var normalizedUsed = UsageLevelResolver.Normalize(usedPercentage);
         var normalizedDisplay = UsageLevelResolver.Normalize(displayPercentage);
         var color = LevelColor(normalizedUsed);
+        HorizontalFillBrush.Color = color;
 
         // Providers republish unchanged readings; only move the rail for a new value.
         if (_animationTarget is { } target && Math.Abs(target - normalizedDisplay) < 0.05)
@@ -1259,6 +1306,7 @@ public partial class MainWindow : Window
 
         var normalized = UsageLevelResolver.Normalize(percentage);
         window.UsageFillScale.ScaleY = normalized / 100d;
+        window.HorizontalFillScale.ScaleX = normalized / 100d;
         window.UpdatePercentText(normalized);
         window.LeadingCapTranslate.Y = -(RailUsableHeight * normalized / 100d);
     }
@@ -1271,8 +1319,9 @@ public partial class MainWindow : Window
         }
 
         var normalized = UsageLevelResolver.Normalize(displayPercentage);
-        var suffix = _settings.PrimaryDisplay == PrimaryUsageDisplay.Used ? "used" : "left";
+        var suffix = Localization.Text(_settings.PrimaryDisplay == PrimaryUsageDisplay.Used ? "#used" : "#left");
         UsagePercentText.Text = $"{Math.Round(normalized)}% {suffix}";
+        HorizontalPercentText.Text = $"{Math.Round(normalized)}%";
         RailRemainingText.Text = $"{Math.Round(normalized)}%";
     }
 
@@ -1319,23 +1368,23 @@ public partial class MainWindow : Window
             Padding = new System.Windows.Forms.Padding(6),
             Renderer = new System.Windows.Forms.ToolStripProfessionalRenderer(new OverlayMenuColorTable())
         };
-        _trayVisibilityMenuItem = new System.Windows.Forms.ToolStripMenuItem("Hide usage rail");
+        _trayVisibilityMenuItem = new System.Windows.Forms.ToolStripMenuItem(Localization.Text("Hide usage rail"));
         _trayVisibilityMenuItem.Click += (_, _) => Dispatcher.Invoke(ToggleManualVisibility);
         menu.Items.Add(_trayVisibilityMenuItem);
-        menu.Items.Add("Open settings…", null, (_, _) => Dispatcher.Invoke(ShowSettings));
+        menu.Items.Add(Localization.Text("Open settings…"), null, (_, _) => Dispatcher.Invoke(ShowSettings));
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
-        menu.Items.Add("Refresh usage", null, (_, _) => Dispatcher.Invoke(RefreshAllProviders));
-        _trayConnectionMenuItem = new System.Windows.Forms.ToolStripMenuItem("Disconnect Codex CLI");
+        menu.Items.Add(Localization.Text("Refresh usage"), null, (_, _) => Dispatcher.Invoke(RefreshAllProviders));
+        _trayConnectionMenuItem = new System.Windows.Forms.ToolStripMenuItem(Localization.Text("Disconnect Codex CLI"));
         _trayConnectionMenuItem.Click += async (_, _) =>
             await Dispatcher.InvokeAsync(ToggleCodexConnectionAsync).Task.Unwrap();
         menu.Items.Add(_trayConnectionMenuItem);
-        _trayUpdateMenuItem = new System.Windows.Forms.ToolStripMenuItem("Check for updates");
+        _trayUpdateMenuItem = new System.Windows.Forms.ToolStripMenuItem(Localization.Text("Check for updates"));
         _trayUpdateMenuItem.Click += async (_, _) => await CheckForUpdatesAsync();
         menu.Items.Add(_trayUpdateMenuItem);
-        menu.Items.Add("Open log file", null, (_, _) => OpenLog());
+        menu.Items.Add(Localization.Text("Open log file"), null, (_, _) => OpenLog());
         menu.Items.Add(new System.Windows.Forms.ToolStripSeparator());
         var exitItem = menu.Items.Add(
-            "Quit Usage Overlay",
+            Localization.Text("Quit Usage Overlay"),
             null,
             (_, _) => Dispatcher.Invoke(System.Windows.Application.Current.Shutdown));
         exitItem.ForeColor = System.Drawing.Color.FromArgb(229, 90, 90);
@@ -1372,7 +1421,7 @@ public partial class MainWindow : Window
 
     private void UpdateConnectionMenuLabels()
     {
-        var label = _codex.IsSuspended ? "Reconnect Codex CLI" : "Disconnect Codex CLI";
+        var label = Localization.Text(_codex.IsSuspended ? "Reconnect Codex CLI" : "Disconnect Codex CLI");
         var visible = _settings.CodexEnabled && _options.DemoPercent is null;
         if (_trayConnectionMenuItem is not null)
         {
@@ -1411,7 +1460,7 @@ public partial class MainWindow : Window
         }
 
         _trayUpdateMenuItem.Enabled = false;
-        _trayUpdateMenuItem.Text = "Checking for updates…";
+        _trayUpdateMenuItem.Text = Localization.Text("Checking for updates…");
         _pendingUpdateUri = null;
 
         try
@@ -1421,18 +1470,25 @@ public partial class MainWindow : Window
             {
                 return;
             }
-            if (result.IsUpdateAvailable)
+            if (!result.HasPublishedRelease)
+            {
+                _notifyIcon.BalloonTipTitle = Localization.Text("No published release found");
+                _notifyIcon.BalloonTipText = Localization.Text("This fork has no published stable release yet.");
+                _notifyIcon.ShowBalloonTip(5000);
+                _logger.Info("No published stable release was found for the fork.");
+            }
+            else if (result.IsUpdateAvailable)
             {
                 _pendingUpdateUri = result.ReleaseUri;
-                _notifyIcon.BalloonTipTitle = $"Usage Overlay {result.LatestVersion} is available";
-                _notifyIcon.BalloonTipText = "Select this notification to open the verified GitHub release.";
+                _notifyIcon.BalloonTipTitle = Localization.Format("Usage Overlay {0} is available", result.LatestVersion);
+                _notifyIcon.BalloonTipText = Localization.Text("Select this notification to open the verified GitHub release.");
                 _notifyIcon.ShowBalloonTip(8000);
                 _logger.Info($"Update available: {result.LatestVersion}.");
             }
             else
             {
-                _notifyIcon.BalloonTipTitle = "Usage Overlay is up to date";
-                _notifyIcon.BalloonTipText = $"You are running version {result.CurrentVersion}.";
+                _notifyIcon.BalloonTipTitle = Localization.Text("Usage Overlay is up to date");
+                _notifyIcon.BalloonTipText = Localization.Format("You are running version {0}.", result.CurrentVersion);
                 _notifyIcon.ShowBalloonTip(5000);
                 _logger.Info("Manual update check found no newer release.");
             }
@@ -1444,8 +1500,8 @@ public partial class MainWindow : Window
         catch (Exception exception) when (
             exception is HttpRequestException or TaskCanceledException or InvalidOperationException or JsonException)
         {
-            _notifyIcon.BalloonTipTitle = "Couldn’t check for updates";
-            _notifyIcon.BalloonTipText = "Open the GitHub Releases page or try again later.";
+            _notifyIcon.BalloonTipTitle = Localization.Text("Couldn’t check for updates");
+            _notifyIcon.BalloonTipText = Localization.Text("Open the GitHub Releases page or try again later.");
             _notifyIcon.ShowBalloonTip(6000);
             _logger.Error($"Update check failed: {exception.Message}");
         }
@@ -1453,7 +1509,7 @@ public partial class MainWindow : Window
         {
             if (!_isClosing)
             {
-                _trayUpdateMenuItem.Text = "Check for updates";
+                _trayUpdateMenuItem.Text = Localization.Text("Check for updates");
                 _trayUpdateMenuItem.Enabled = true;
             }
         }
@@ -1624,16 +1680,16 @@ public partial class MainWindow : Window
         {
             if (!IsProviderEnabled(provider))
             {
-                return "Off.";
+                return Localization.Text("Off.");
             }
 
             var state = _states.TryGetValue(provider, out var value) ? value : ProviderUsageState.Off(provider);
-            return state.Detail.Length > 0 ? $"{state.StatusText}. {state.Detail}" : $"{state.StatusText}.";
+            return state.Detail.Length > 0 ? $"{Localization.Status(state.StatusText)}. {Localization.Status(state.Detail)}" : $"{Localization.Status(state.StatusText)}.";
         }
 
         var codexStatus = _codex.ResolvedCliPath is null
-            ? $"Codex CLI wasn’t found. {Describe(UsageProviderKind.Codex)}"
-            : $"Codex CLI is ready. {Describe(UsageProviderKind.Codex)}";
+            ? Localization.Format("Codex CLI wasn’t found. {0}", Describe(UsageProviderKind.Codex))
+            : Localization.Format("Codex CLI is ready. {0}", Describe(UsageProviderKind.Codex));
         // Setup failures matter more than the usage state; otherwise show the state alone.
         var claudeStatus = _settings.ClaudeEnabled && !_claude.IsRunning && _claude.IntegrationMessage.Length > 0
             ? _claude.IntegrationMessage
@@ -1649,15 +1705,21 @@ public partial class MainWindow : Window
     private async Task<string> ApplySettingsFromWindowAsync(SettingsSaveRequest request)
     {
         var previous = _settings;
-        _settings = request.Settings.Normalize();
+        _settings = (request.Settings with { CustomXRatio = previous.CustomXRatio, CustomYRatio = previous.CustomYRatio }).Normalize();
+        if (!PersistSettings())
+        {
+            _settings = previous;
+            throw new System.IO.IOException(Localization.Text("Settings could not be written. Check access to the settings file and try again."));
+        }
+        ApplyRailLayout();
         ThemeManager.Instance.ApplyTheme(_settings.Theme);
         UpdateTrayMenuTheme();
-        _ = _startupShortcutManager.SetEnabled(request.StartAutomatically);
         _fixedPlacementBounds = _settings.FollowCodexAcrossMonitors ? null : _lastBounds;
-        PersistSettings();
         UpdateUsageReporting();
 
         var messages = new List<string>();
+        if (_startupShortcutManager.IsEnabled != request.StartAutomatically && !_startupShortcutManager.SetEnabled(request.StartAutomatically))
+            messages.Add(Localization.Text("Automatic startup could not be changed. Check the logs."));
         var cursorKeyChanged = false;
         try
         {
@@ -1676,7 +1738,7 @@ public partial class MainWindow : Window
             exception is System.IO.IOException or UnauthorizedAccessException or
                 System.Security.Cryptography.CryptographicException)
         {
-            messages.Add("The Cursor key couldn’t be saved.");
+            messages.Add(Localization.Text("The Cursor key couldn’t be saved."));
             _logger.Error($"Could not update the Cursor key: {exception.Message}");
         }
 
@@ -1732,10 +1794,12 @@ public partial class MainWindow : Window
         return string.Join(" ", messages.Where(message => message.Length > 0));
     }
 
-    private void PersistSettings()
+    private bool PersistSettings()
     {
         _settings = _settings.Normalize();
-        _settingsStore.Save(_settings);
+        var saved = _settingsStore.Save(_settings);
+        _settingsError = saved ? null : "Settings could not be written. Check access to the settings file and try again.";
+        return saved;
     }
 
     private void UpdateUsageReporting()
@@ -1764,7 +1828,7 @@ public partial class MainWindow : Window
 
     private void UpdateVisibilityMenuLabels()
     {
-        var label = _isManuallyHidden ? "Show usage rail" : "Hide usage rail";
+        var label = Localization.Text(_isManuallyHidden ? "Show usage rail" : "Hide usage rail");
         _trayVisibilityMenuItem.Text = label;
         RailVisibilityMenuItem.Header = label;
     }
@@ -1772,15 +1836,16 @@ public partial class MainWindow : Window
     private void ResetToCollapsedState()
     {
         _collapseTimer.Stop();
+        _hoverTimer.Stop();
         _isPinned = false;
+        _detailsClosing = false;
         _isExpanded = false;
         DetailsPanel.BeginAnimation(OpacityProperty, null);
         DetailsTranslate.BeginAnimation(TranslateTransform.XProperty, null);
         DetailsPanel.Opacity = 0;
         DetailsTranslate.X = 8;
         DetailsPanel.Visibility = Visibility.Collapsed;
-        Width = CollapsedWidth;
-        Height = CollapsedHeight;
+        ApplyRailLayout();
         RepositionAfterWidthChange();
         UpdateEscapeHotKey();
     }
@@ -1836,11 +1901,11 @@ public partial class MainWindow : Window
         try
         {
             System.Windows.Clipboard.SetText("claude auth login");
-            RecoveryActionButton.Content = "Command copied";
+            RecoveryActionButton.Content = Localization.Text("Command copied");
         }
         catch (System.Runtime.InteropServices.ExternalException)
         {
-            RecoveryActionButton.Content = "Copy failed. Try again";
+            RecoveryActionButton.Content = Localization.Text("Copy failed. Try again");
         }
     }
 

@@ -42,6 +42,29 @@ public static class NativeWindowStyle
         }
     }
 
+    internal static bool SetBounds(IntPtr window, Rect bounds, DpiScale dpi)
+    {
+        var left = (int)Math.Round(bounds.Left * dpi.DpiScaleX);
+        var top = (int)Math.Round(bounds.Top * dpi.DpiScaleY);
+        var width = (int)Math.Round(bounds.Width * dpi.DpiScaleX);
+        var height = (int)Math.Round(bounds.Height * dpi.DpiScaleY);
+        if (GetWindowRect(window, out var current) && current.Left == left && current.Top == top
+            && current.Right - current.Left == width && current.Bottom - current.Top == height) return true;
+        // Commit size and position together without activating or changing the window order.
+        return SetWindowPos(window, IntPtr.Zero, left, top, width, height, 0x0214);
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeRectangle { public int Left, Top, Right, Bottom; }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetWindowPos(IntPtr window, IntPtr insertAfter, int x, int y, int width, int height, uint flags);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr window, out NativeRectangle rectangle);
+
     private static IntPtr GetWindowLongPtr(IntPtr window, int index)
     {
         return IntPtr.Size == 8

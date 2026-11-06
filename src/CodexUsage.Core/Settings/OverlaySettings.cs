@@ -22,6 +22,15 @@ public enum PrimaryUsageDisplay
     Used
 }
 
+public enum AppLanguage
+{
+    English,
+    Russian
+}
+
+public enum RailOrientation { Vertical, Horizontal }
+public enum DetailsPlacement { Above, Below }
+
 public sealed record OverlaySettings
 {
     /// <summary>Preserves opt-ins from earlier settings without overriding an explicit current choice.</summary>
@@ -54,6 +63,12 @@ public sealed record OverlaySettings
     }
 
     public AppTheme Theme { get; init; } = AppTheme.System;
+
+    public AppLanguage Language { get; init; } = AppLanguage.English;
+
+    public RailOrientation Orientation { get; init; }
+
+    public DetailsPlacement DetailsPosition { get; init; }
 
     public HorizontalPlacement Placement { get; init; } = HorizontalPlacement.RightEdge;
 
@@ -96,9 +111,9 @@ public sealed record OverlaySettings
 
     public PrimaryUsageDisplay PrimaryDisplay { get; init; } = PrimaryUsageDisplay.Remaining;
 
-    public double WarningThreshold { get; init; } = 70;
+    public double WarningThreshold { get; init; } = 50;
 
-    public double CriticalThreshold { get; init; } = 90;
+    public double CriticalThreshold { get; init; } = 80;
 
     public bool AnimationsEnabled { get; init; } = true;
 
@@ -147,6 +162,9 @@ public sealed record OverlaySettings
         return this with
         {
             Theme = theme,
+            Language = Enum.IsDefined(Language) ? Language : AppLanguage.English,
+            Orientation = Enum.IsDefined(Orientation) ? Orientation : RailOrientation.Vertical,
+            DetailsPosition = Enum.IsDefined(DetailsPosition) ? DetailsPosition : DetailsPlacement.Above,
             Placement = placement,
             HorizontalOffset = Math.Clamp(HorizontalOffset, -600, 600),
             VerticalOffset = Math.Clamp(VerticalOffset, -300, 600),

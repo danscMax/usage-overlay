@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-This project is currently a preview. Security fixes are applied to the latest release and the default branch.
+This fork is a preview. Security fixes target the latest fork release and the default branch at `danscMax/usage-overlay`.
 
 ## Report a vulnerability
 
@@ -21,13 +21,15 @@ Do not include real credentials, session tokens, private conversations, or anoth
 Usage Overlay:
 
 - Starts the locally installed Codex CLI in App Server stdio mode
-- Requests account rate-limit metadata only
+- Requests account rate-limit metadata through Codex App Server
 - Uses Codex-owned authentication without reading authentication files
 - Identifies the active Codex window through Windows process metadata
-- Stores settings and redacted diagnostic logs under `%LOCALAPPDATA%\UsageOverlay`
+- Reads local Codex rollouts, read-only state/queue databases and active-thread IPC for session indicators
+- Reads Git and existing diagnostics caches; optional PR/review requests use an existing GitHub CLI sign-in
+- Stores settings at `%USERPROFILE%\.usage-overlay\settings.json` and redacted logs under `%LOCALAPPDATA%\UsageOverlay`
 - Creates Start-menu or Startup shortcuts only when the user requests them
 
-It does not inject code into Codex, inspect conversation content, read cookies, expose a network listener, or send account data to the reporting service. Optional installation reporting is disabled by default; it sends only a random ID and app version to Haroone over HTTPS, without cookies or redirects, with a five-second timeout and at most one attempt per UTC day.
+It does not inject code into Codex or upload local session/workspace data. Session readers parse local rollouts for token/tool state; these files may also contain conversation text, so access is not quota-only. Optional saved-sign-in integrations have separate credential access described in `docs/privacy.md`. Optional installation reporting is off by default; it sends only a random ID and app version to the original Haroone endpoint over HTTPS, without cookies/redirects, with a five-second timeout and at most one attempt per UTC day. Manual updates use this fork's GitHub Releases API.
 
 ## Local attack considerations
 

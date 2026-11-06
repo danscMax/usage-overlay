@@ -1,5 +1,6 @@
 param(
-    [string]$Version = (Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'VERSION') -Raw).Trim()
+    [string]$Version = (Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'VERSION') -Raw).Trim(),
+    [string]$ArtifactsRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -10,7 +11,11 @@ if ($Version -notmatch '^\d+\.\d+\.\d+(?:[-.][0-9A-Za-z.-]+)?$') {
 }
 
 $projectRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$artifactsRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts'))
+$artifactsRoot = [System.IO.Path]::GetFullPath($ArtifactsRoot)
+$allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts'))
+if ($artifactsRoot -ne $allowedRoot -and -not $artifactsRoot.StartsWith($allowedRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Release output must remain inside this checkout artifacts directory.'
+}
 $workRoot = [System.IO.Path]::GetFullPath((Join-Path $artifactsRoot 'release-work'))
 $publishDirectory = Join-Path $workRoot 'publish'
 $packageDirectory = Join-Path $workRoot 'UsageOverlay'
@@ -45,17 +50,19 @@ dotnet publish $overlayProject `
     --runtime win-x64 `
     --self-contained true `
     --output $publishDirectory `
-    -p:Version=$Version `
-    -p:PublishSingleFile=true `
-    -p:PublishTrimmed=false `
-    -p:IncludeNativeLibrariesForSelfExtract=true `
-    -p:DebugType=None `
-    -p:DebugSymbols=false
+    "-p:Version=$Version" `
+    '-p:PublishSingleFile=true' `
+    '-p:PublishTrimmed=false' `
+    '-p:IncludeNativeLibrariesForSelfExtract=true' `
+    '-p:DebugType=None' `
+    '-p:DebugSymbols=false'
 
 Copy-Item -LiteralPath (Join-Path $publishDirectory 'UsageOverlay.exe') -Destination $packageDirectory
 foreach ($document in @(
     'README.md',
     'LICENSE',
+    'THIRD-PARTY-NOTICES.md',
+    'RELEASE_NOTES.md',
     'CHANGELOG.md',
     'SECURITY.md',
     'CONTRIBUTING.md',
@@ -67,6 +74,28 @@ foreach ($document in @(
 }
 Copy-Item -LiteralPath (Join-Path $projectRoot 'assets') -Destination $packageDirectory -Recurse
 Copy-Item -LiteralPath (Join-Path $projectRoot 'docs') -Destination $packageDirectory -Recurse
+Copy-Item -LiteralPath (Join-Path $projectRoot 'licenses') -Destination $packageDirectory -Recurse
+$assets = Get-Content -LiteralPath (Join-Path $projectRoot 'src\UsageOverlay\obj\project.assets.json') -Raw | ConvertFrom-Json -AsHashtable
+$packagesRoot = $assets.packageFolders.Keys | Select-Object -First 1
+$runtimeNotices = Join-Path $packageDirectory 'licenses\runtime'
+[void](New-Item -ItemType Directory -Path $runtimeNotices -Force)
+$packagePaths = @($assets.libraries.Values | Where-Object type -eq 'package' | ForEach-Object path)
+# Runtime packs are restored separately from project library references.
+foreach ($pack in @('microsoft.netcore.app.runtime.win-x64', 'microsoft.windowsdesktop.app.runtime.win-x64')) {
+    $download = $assets.project.frameworks.Values | ForEach-Object { $_.downloadDependencies } | Where-Object name -eq $pack | Select-Object -First 1
+    if (-not $download) { throw "Restored runtime pack was not found: $pack" }
+    $runtimeVersion = $download.version.TrimStart('[').Split(',')[0].Trim()
+    $packagePaths += "$pack/$runtimeVersion"
+}
+foreach ($packagePath in $packagePaths) {
+    $source = Join-Path $packagesRoot $packagePath
+    $notices = @(Get-ChildItem -LiteralPath $source -File | Where-Object Name -Match '^(LICENSE|NOTICE|THIRD.PARTY)|\.nuspec$')
+    if ($notices.Count -gt 0) {
+        $destination = Join-Path $runtimeNotices ($packagePath -replace '[/\\]', '-')
+        [void](New-Item -ItemType Directory -Path $destination -Force)
+        $notices | Copy-Item -Destination $destination
+    }
+}
 Copy-Item -LiteralPath (Join-Path $projectRoot 'src\UsageOverlay\Assets\UsageOverlay.ico') `
     -Destination (Join-Path $packageDirectory 'assets\UsageOverlay.ico')
 foreach ($script in @(
@@ -102,7 +131,8 @@ $checksumPath = Join-Path $releaseDirectory 'SHA256SUMS.txt'
 
 $manifest = [ordered]@{
     product = 'Usage Overlay'
-    publisher = 'Haroone.com'
+    publisher = 'danscMax'
+    repository = 'https://github.com/danscMax/usage-overlay'
     version = $Version
     runtime = 'win-x64'
     selfContained = $true

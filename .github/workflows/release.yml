@@ -2,6 +2,8 @@ name: Release
 
 on:
   push:
+    branches:
+      - 'release/**'
     tags:
       - 'v*.*.*'
 
@@ -28,25 +30,42 @@ jobs:
         shell: pwsh
         run: choco install innosetup --version=6.7.1 --no-progress -y
 
+      - name: Read release version
+        id: version
+        shell: pwsh
+        run: |
+          $version = (Get-Content -LiteralPath VERSION -Raw).Trim()
+          if ($env:GITHUB_REF_TYPE -eq 'tag' -and $env:GITHUB_REF_NAME -ne "v$version") {
+            throw 'Release tag must match VERSION.'
+          }
+          "value=$version" >> $env:GITHUB_OUTPUT
+
       - name: Build release package
         shell: pwsh
         run: |
-          $version = '${{ github.ref_name }}'.TrimStart('v')
+          $version = '${{ steps.version.outputs.value }}'
           .\scripts\package-release.ps1 -Version $version
+
+      - name: Validate release package
+        shell: pwsh
+        run: .\scripts\validate-release.ps1 -Version '${{ steps.version.outputs.value }}'
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: usage-overlay-${{ github.ref_name }}-win-x64
+          name: usage-overlay-v${{ steps.version.outputs.value }}-win-x64
           path: artifacts/release/*
           if-no-files-found: error
 
-      - name: Create GitHub release
+      - name: Create draft GitHub release
+        if: startsWith(github.ref, 'refs/tags/')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $files = Get-ChildItem -LiteralPath .\artifacts\release -File | ForEach-Object FullName
           gh release create $env:GITHUB_REF_NAME $files `
-            --title "Usage Overlay $env:GITHUB_REF_NAME" `
-            --generate-notes
+            --repo '${{ github.repository }}' `
+            --verify-tag --draft `
+            --title "Usage Overlay $env:GITHUB_REF_NAME — danscMax fork" `
+            --notes-file RELEASE_NOTES.md

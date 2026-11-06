@@ -1,5 +1,7 @@
 # Support
 
+This is the independent [danscMax fork](https://github.com/danscMax/usage-overlay). Report fork-specific bugs to [this fork's issues](https://github.com/danscMax/usage-overlay/issues). The original maintainer does not maintain these additions.
+
 ## Questions and setup help
 
 Use repository Discussions when available. Otherwise, open a support issue with:

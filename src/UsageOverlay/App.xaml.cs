@@ -22,10 +22,12 @@ public partial class App : System.Windows.Application
     private AppLogger? _logger;
     private volatile bool _isExiting;
     private bool _ownsMutex;
+    internal bool IsRenderingPreview { get; init; }
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
+        if (IsRenderingPreview) return;
         var options = OverlayOptions.Parse(e.Args);
 
         _singleInstanceMutex = new Mutex(true, SingleInstanceMutexName, out var createdNew);

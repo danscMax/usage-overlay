@@ -4,9 +4,9 @@
         Title="Usage Overlay Settings"
         Width="650"
         Height="760"
-        MinWidth="590"
-        MinHeight="560"
-        ResizeMode="NoResize"
+        MinWidth="460"
+        MinHeight="360"
+        ResizeMode="CanResizeWithGrip"
         WindowStyle="None"
         WindowStartupLocation="CenterOwner"
         ShowInTaskbar="False"
@@ -68,6 +68,24 @@
             <Setter Property="FontSize" Value="{StaticResource OverlayTextBody}" />
             <Setter Property="Margin" Value="0,7,0,0" />
             <Setter Property="Padding" Value="2" />
+            <Setter Property="Cursor" Value="Hand" />
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="RadioButton">
+                        <Grid Background="Transparent" Margin="2">
+                            <Grid.ColumnDefinitions><ColumnDefinition Width="16" /><ColumnDefinition Width="*" /></Grid.ColumnDefinitions>
+                            <Ellipse x:Name="RadioEdge" Width="14" Height="14" Stroke="{DynamicResource OverlayMutedBrush}" StrokeThickness="1" VerticalAlignment="Center" />
+                            <Ellipse x:Name="RadioDot" Width="8" Height="8" Fill="{DynamicResource OverlayNormalBrush}" Visibility="Collapsed" VerticalAlignment="Center" />
+                            <ContentPresenter Grid.Column="1" Margin="7,0,0,0" VerticalAlignment="Center" RecognizesAccessKey="True" />
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True"><Setter TargetName="RadioDot" Property="Visibility" Value="Visible" /><Setter TargetName="RadioEdge" Property="Stroke" Value="{DynamicResource OverlayNormalBrush}" /></Trigger>
+                            <Trigger Property="IsEnabled" Value="False"><Setter Property="Opacity" Value="0.45" /></Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True"><Setter TargetName="RadioEdge" Property="StrokeThickness" Value="2" /></Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="SettingsButtonStyle" TargetType="Button">
@@ -150,68 +168,6 @@
             </Setter>
         </Style>
 
-        <Style x:Key="SettingsScrollThumbStyle" TargetType="Thumb">
-            <Setter Property="Background" Value="{DynamicResource OverlayMutedBrush}" />
-            <Setter Property="Opacity" Value="0.55" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="Thumb">
-                        <Border Margin="2,1"
-                                Background="{TemplateBinding Background}"
-                                CornerRadius="3" />
-                        <ControlTemplate.Triggers>
-                            <Trigger Property="IsMouseOver" Value="True">
-                                <Setter Property="Opacity" Value="0.8" />
-                            </Trigger>
-                            <Trigger Property="IsDragging" Value="True">
-                                <Setter Property="Background" Value="{DynamicResource OverlayNormalBrush}" />
-                                <Setter Property="Opacity" Value="1" />
-                            </Trigger>
-                        </ControlTemplate.Triggers>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="SettingsScrollPageButtonStyle" TargetType="RepeatButton">
-            <Setter Property="Focusable" Value="False" />
-            <Setter Property="IsTabStop" Value="False" />
-            <Setter Property="Opacity" Value="0" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="RepeatButton">
-                        <Border Background="Transparent" />
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
-        <Style x:Key="SettingsVerticalScrollBarStyle" TargetType="ScrollBar">
-            <Setter Property="Width" Value="10" />
-            <Setter Property="Background" Value="{DynamicResource SettingsWindowBackgroundBrush}" />
-            <Setter Property="Template">
-                <Setter.Value>
-                    <ControlTemplate TargetType="ScrollBar">
-                        <Border Background="{TemplateBinding Background}">
-                            <Track x:Name="PART_Track" IsDirectionReversed="True">
-                                <Track.DecreaseRepeatButton>
-                                    <RepeatButton Command="ScrollBar.PageUpCommand"
-                                                  Style="{StaticResource SettingsScrollPageButtonStyle}" />
-                                </Track.DecreaseRepeatButton>
-                                <Track.Thumb>
-                                    <Thumb MinHeight="36" Style="{StaticResource SettingsScrollThumbStyle}" />
-                                </Track.Thumb>
-                                <Track.IncreaseRepeatButton>
-                                    <RepeatButton Command="ScrollBar.PageDownCommand"
-                                                  Style="{StaticResource SettingsScrollPageButtonStyle}" />
-                                </Track.IncreaseRepeatButton>
-                            </Track>
-                        </Border>
-                    </ControlTemplate>
-                </Setter.Value>
-            </Setter>
-        </Style>
-
         <Style x:Key="SettingsTitleBarButtonStyle" TargetType="Button">
             <Setter Property="Width" Value="40" />
             <Setter Property="Height" Value="31" />
@@ -258,7 +214,7 @@
         </Style>
     </Window.Resources>
 
-    <Grid>
+    <Grid Background="{DynamicResource SettingsWindowBackgroundBrush}">
         <Grid.RowDefinitions>
             <RowDefinition Height="32" />
             <RowDefinition Height="Auto" />
@@ -315,17 +271,10 @@
         <Border Grid.Row="1" Padding="24,20" BorderBrush="{DynamicResource OverlayBorderBrush}" BorderThickness="0,0,0,1">
             <StackPanel>
                 <TextBlock Text="Usage Overlay" FontSize="{StaticResource OverlayTextValue}" FontWeight="Medium" Foreground="{DynamicResource OverlayTextBrush}" />
-                <TextBlock Margin="0,5,0,0"
+                <TextBlock x:Name="SettingsIntroText" Margin="0,5,0,0"
                            Foreground="{DynamicResource OverlayMutedBrush}"
-                           FontSize="{StaticResource OverlayTextBody}">
-                    <Run Text="Codex, Claude and Cursor usage at a glance. Built by " />
-                    <Hyperlink NavigateUri="https://haroone.com"
-                               Foreground="{DynamicResource OverlayNormalBrush}"
-                               RequestNavigate="HarooneLink_OnRequestNavigate"
-                               ToolTip="Open Haroone.com">
-                        <Run Text="Haroone.com" />
-                    </Hyperlink>
-                </TextBlock>
+                           FontSize="{StaticResource OverlayTextBody}" TextWrapping="Wrap"
+                           Text="AI usage and workspace status at a glance." />
             </StackPanel>
         </Border>
 
@@ -336,7 +285,7 @@
             <ScrollViewer.Resources>
                 <Style TargetType="ScrollBar" BasedOn="{StaticResource SettingsVerticalScrollBarStyle}" />
             </ScrollViewer.Resources>
-            <StackPanel Margin="20,16,20,20">
+            <StackPanel x:Name="SettingsSections" Margin="20,16,20,20">
                 <Border Margin="0,0,0,12" Padding="1" Background="{DynamicResource OverlayBorderBrush}" CornerRadius="15">
                     <Border Padding="18" Background="{DynamicResource OverlaySurfaceBrush}" CornerRadius="14">
                         <StackPanel>
@@ -344,6 +293,12 @@
                             <CheckBox x:Name="StartAutomaticallyCheckBox"
                                       Content="Open when Windows starts"
                                       Style="{StaticResource SettingsCheckStyle}" />
+                            <TextBlock Text="Language" Style="{StaticResource FieldLabelStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="EnglishLanguageRadio" GroupName="LanguageMode" Content="English" Style="{StaticResource SettingsRadioStyle}" />
+                                <RadioButton x:Name="RussianLanguageRadio" GroupName="LanguageMode" Content="Russian" Margin="18,7,0,0" Style="{StaticResource SettingsRadioStyle}" />
+                            </StackPanel>
+                            <TextBlock Text="Restart Usage Overlay to apply a language change." Style="{StaticResource HelpTextStyle}" />
                         </StackPanel>
                     </Border>
                 </Border>
@@ -487,10 +442,21 @@
                     </Border>
                 </Border>
 
-                <Border Margin="0,0,0,12" Padding="1" Background="{DynamicResource OverlayBorderBrush}" CornerRadius="15">
+                <Border x:Name="PositionSection" Margin="0,0,0,12" Padding="1" Background="{DynamicResource OverlayBorderBrush}" CornerRadius="15">
                     <Border Padding="18" Background="{DynamicResource OverlaySurfaceBrush}" CornerRadius="14">
                         <StackPanel>
                             <TextBlock Text="Position" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock Text="Bar orientation" Style="{StaticResource FieldLabelStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="VerticalRailRadio" GroupName="RailOrientation" Content="Vertical" Checked="LayoutChoice_OnClick" Style="{StaticResource SettingsRadioStyle}" />
+                                <RadioButton x:Name="HorizontalRailRadio" GroupName="RailOrientation" Content="Horizontal" Checked="LayoutChoice_OnClick" Margin="14,7,0,0" Style="{StaticResource SettingsRadioStyle}" />
+                            </StackPanel>
+                            <TextBlock x:Name="LayoutHintText" Margin="0,6,0,2" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource OverlayMutedBrush}" />
+                            <TextBlock Text="Information beside the horizontal bar" Style="{StaticResource FieldLabelStyle}" />
+                            <StackPanel Orientation="Horizontal">
+                                <RadioButton x:Name="DetailsAboveRadio" GroupName="DetailsPosition" Content="Above the bar" Style="{StaticResource SettingsRadioStyle}" />
+                                <RadioButton x:Name="DetailsBelowRadio" GroupName="DetailsPosition" Content="Below the bar" Margin="14,7,0,0" Style="{StaticResource SettingsRadioStyle}" />
+                            </StackPanel>
                             <TextBlock Margin="0,6,0,2"
                                        Text="Drag the rail where you want it, or snap it to an edge."
                                        Foreground="{DynamicResource OverlayMutedBrush}"
@@ -668,9 +634,10 @@
                                     <ColumnDefinition Width="Auto" />
                                 </Grid.ColumnDefinitions>
                                 <StackPanel Margin="0,0,12,0">
-                                    <TextBlock Text="Connection &amp; diagnostics" Style="{StaticResource SectionTitleStyle}" />
+                                    <TextBlock Text="Connection &amp; diagnostics" TextWrapping="Wrap" Style="{StaticResource SectionTitleStyle}" />
                                     <TextBlock Margin="0,6,0,0"
                                                Text="Only needed if Usage Overlay cannot connect to Codex or update."
+                                               TextWrapping="Wrap"
                                                Foreground="{DynamicResource OverlayMutedBrush}"
                                                FontSize="{StaticResource OverlayTextSmall}" />
                                 </StackPanel>
@@ -705,6 +672,29 @@
                         </StackPanel>
                     </Border>
                 </Border>
+                <Border x:Name="AcknowledgementsSection" Margin="0,0,0,12" Padding="1" Background="{DynamicResource OverlayBorderBrush}" CornerRadius="15">
+                    <Border Padding="18" Background="{DynamicResource OverlaySurfaceBrush}" CornerRadius="14">
+                        <StackPanel>
+                            <TextBlock Text="Acknowledgements" Style="{StaticResource SectionTitleStyle}" />
+                            <TextBlock x:Name="ForkVersionText" Margin="0,6,0,8" FontSize="11" Foreground="{DynamicResource OverlayMutedBrush}" TextWrapping="Wrap" />
+                            <TextBlock x:Name="OriginalAuthorCredit" TextWrapping="Wrap" FontSize="12" Foreground="{DynamicResource OverlayTextBrush}">
+                                <Run Text="Based on Usage Overlay by " />
+                                <Hyperlink NavigateUri="https://github.com/haroonsulahri/usage-overlay" Foreground="{DynamicResource OverlayNormalBrush}" RequestNavigate="ProjectLink_OnRequestNavigate"><Run Text="Haroon / Haroone.com" /></Hyperlink>
+                                <Run Text=" (MIT)." />
+                            </TextBlock>
+                            <TextBlock Margin="0,8,0,0" Text="Original copyright and the MIT license are preserved in the application package." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource OverlayMutedBrush}" />
+                            <TextBlock Margin="0,8,0,0" TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource OverlayMutedBrush}">
+                                <Run Text="Telemetry readers: " />
+                                <Hyperlink NavigateUri="https://github.com/dongyue-19/codex-statusbar" Foreground="{DynamicResource OverlayNormalBrush}" RequestNavigate="ProjectLink_OnRequestNavigate"><Run Text="CodexStatusbar" /></Hyperlink>
+                                <Run Text=" (MIT)." />
+                            </TextBlock>
+                            <TextBlock Margin="0,8,0,0" Text="Statusline icons: CaskaydiaCove Nerd Font and its component icon sets. Their licenses are included with the application." TextWrapping="Wrap" FontSize="11" Foreground="{DynamicResource OverlayMutedBrush}" />
+                            <TextBlock Margin="0,10,0,0" TextWrapping="Wrap" FontSize="11">
+                                <Hyperlink NavigateUri="https://github.com/danscMax/usage-overlay" Foreground="{DynamicResource OverlayNormalBrush}" RequestNavigate="ProjectLink_OnRequestNavigate"><Run Text="Fork source and releases" /></Hyperlink>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 
@@ -716,9 +706,11 @@
                 </Grid.ColumnDefinitions>
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock x:Name="ValidationText"
+                               TextWrapping="Wrap"
                                Foreground="{DynamicResource OverlayCriticalBrush}"
                                FontSize="{StaticResource OverlayTextSmall}" />
                     <TextBlock x:Name="SavedStatusText"
+                               TextWrapping="Wrap"
                                Foreground="{DynamicResource OverlayNormalBrush}"
                                FontSize="{StaticResource OverlayTextSmall}" />
                 </StackPanel>
@@ -727,7 +719,7 @@
                             IsCancel="True"
                             Style="{StaticResource SettingsButtonStyle}"
                             Click="CancelButton_OnClick" />
-                    <Button Margin="8,0,0,0"
+                    <Button x:Name="SaveButton" Margin="8,0,0,0"
                             Content="Save"
                             IsDefault="True"
                             Style="{StaticResource SettingsPrimaryButtonStyle}"

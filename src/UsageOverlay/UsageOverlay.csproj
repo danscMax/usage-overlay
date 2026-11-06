@@ -11,12 +11,10 @@
     <RootNamespace>UsageOverlay</RootNamespace>
     <Product>Usage Overlay</Product>
     <AssemblyTitle>Usage Overlay</AssemblyTitle>
-    <Company>Haroone.com</Company>
-    <Authors>Haroone.com</Authors>
-    <Copyright>Copyright (c) 2026 Haroone.com</Copyright>
-    <Description>Unofficial Windows usage rail for Codex, Claude and Cursor.</Description>
+    <Description>Usage limits and workspace status for Codex, Claude and Cursor. Maintained in the danscMax fork.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <StartupObject>UsageOverlay.Program</StartupObject>
+    <IncludeNativeLibrariesForSelfExtract Condition="'$(PublishSingleFile)' == 'true' and '$(SelfContained)' == 'true'">true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
 
   <ItemGroup>
@@ -31,5 +29,8 @@
   <ItemGroup>
     <Resource Include="Assets\UsageOverlay.ico" />
     <Resource Include="Assets\Logos\*.png" />
+    <Resource Include="Assets\Statusline\StatuslineIcons.ttf" />
+    <EmbeddedResource Include="Telemetry\LICENSE.codex-statusbar.txt" />
+    <EmbeddedResource Include="Assets\Statusline\LICENSE.txt" />
   </ItemGroup>
 </Project>

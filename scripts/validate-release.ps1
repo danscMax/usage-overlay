@@ -1,11 +1,16 @@
 param(
-    [string]$Version = (Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'VERSION') -Raw).Trim()
+    [string]$Version = (Get-Content -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'VERSION') -Raw).Trim(),
+    [string]$ArtifactsRoot = (Join-Path (Split-Path -Parent $PSScriptRoot) 'artifacts')
 )
 
 $ErrorActionPreference = 'Stop'
 
 $projectRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
-$artifactsRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts'))
+$artifactsRoot = [System.IO.Path]::GetFullPath($ArtifactsRoot)
+$allowedRoot = [System.IO.Path]::GetFullPath((Join-Path $projectRoot 'artifacts'))
+if ($artifactsRoot -ne $allowedRoot -and -not $artifactsRoot.StartsWith($allowedRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+    throw 'Release validation must remain inside this checkout artifacts directory.'
+}
 $releaseDirectory = [System.IO.Path]::GetFullPath((Join-Path $artifactsRoot 'release'))
 $validationDirectory = [System.IO.Path]::GetFullPath((Join-Path $artifactsRoot "validation\v$Version"))
 $requiredPrefix = $artifactsRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) +
@@ -28,7 +33,7 @@ if (-not (Test-Path -LiteralPath $archivePath) -or
 }
 
 $manifest = Get-Content -LiteralPath $manifestPath -Raw | ConvertFrom-Json
-if ($manifest.product -ne 'Usage Overlay' -or $manifest.publisher -ne 'Haroone.com') {
+if ($manifest.product -ne 'Usage Overlay' -or $manifest.publisher -ne 'danscMax' -or $manifest.version -ne $Version -or $manifest.repository -ne 'https://github.com/danscMax/usage-overlay') {
     throw 'Release manifest contains unexpected product or publisher metadata.'
 }
 if ($manifest.installer -ne $installerName -or $manifest.portableArchive -ne $archiveName) {
@@ -65,6 +70,13 @@ $requiredFiles = @(
     'UsageOverlay.exe',
     'README.md',
     'LICENSE',
+    'THIRD-PARTY-NOTICES.md',
+    'RELEASE_NOTES.md',
+    'licenses\CodexStatusbar.txt',
+    'licenses\Nerd-Fonts.txt',
+    'licenses\Cascadia-Code.txt',
+    'licenses\Font-Awesome.txt',
+    'licenses\Octicons.txt',
     'CHANGELOG.md',
     'SECURITY.md',
     'VERSION',
@@ -87,8 +99,11 @@ if ($missingFiles.Count -gt 0) {
 
 $executable = Join-Path $packageDirectory 'UsageOverlay.exe'
 $versionInfo = (Get-Item -LiteralPath $executable).VersionInfo
-if ($versionInfo.ProductName -ne 'Usage Overlay' -or $versionInfo.CompanyName -ne 'Haroone.com') {
+if ($versionInfo.ProductName -ne 'Usage Overlay' -or $versionInfo.CompanyName -ne 'danscMax' -or -not $versionInfo.ProductVersion.StartsWith($Version, [StringComparison]::Ordinal)) {
     throw 'Executable contains unexpected product or publisher metadata.'
+}
+if ((Get-FileHash -LiteralPath (Join-Path $packageDirectory 'LICENSE')).Hash -ne (Get-FileHash -LiteralPath (Join-Path $projectRoot 'LICENSE')).Hash) {
+    throw 'Packaged original MIT license differs from the source license.'
 }
 
 [pscustomobject]@{

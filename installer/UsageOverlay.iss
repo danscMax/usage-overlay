@@ -15,10 +15,10 @@ AppId={{77D695F8-E781-429C-9AAD-D4C07285B9D0}
 AppName=Usage Overlay
 AppVersion={#AppVersion}
 AppVerName=Usage Overlay {#AppVersion}
-AppPublisher=Haroone.com
-AppPublisherURL=https://haroone.com
-AppSupportURL=https://github.com/haroonsulahri/usage-overlay/issues
-AppUpdatesURL=https://github.com/haroonsulahri/usage-overlay/releases
+AppPublisher=danscMax
+AppPublisherURL=https://github.com/danscMax/usage-overlay
+AppSupportURL=https://github.com/danscMax/usage-overlay/issues
+AppUpdatesURL=https://github.com/danscMax/usage-overlay/releases
 DefaultDirName={localappdata}\Programs\Usage Overlay
 DefaultGroupName=Usage Overlay
 DisableProgramGroupPage=yes
@@ -41,6 +41,9 @@ LicenseFile={#PackageDirectory}\LICENSE
 Source: "{#PackageDirectory}\UsageOverlay.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PackageDirectory}\README.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PackageDirectory}\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PackageDirectory}\THIRD-PARTY-NOTICES.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PackageDirectory}\RELEASE_NOTES.md"; DestDir: "{app}"; Flags: ignoreversion
+Source: "{#PackageDirectory}\licenses\*"; DestDir: "{app}\licenses"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#PackageDirectory}\CHANGELOG.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PackageDirectory}\SECURITY.md"; DestDir: "{app}"; Flags: ignoreversion
 Source: "{#PackageDirectory}\VERSION"; DestDir: "{app}"; Flags: ignoreversion
